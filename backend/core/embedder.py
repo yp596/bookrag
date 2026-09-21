@@ -19,11 +19,23 @@ import sys
 import traceback
 from pathlib import Path
 
-# 必须在导入 huggingface_hub 之前设置，否则不生效
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
-# Windows 下 huggingface_hub 无法建符号链接，关掉警告噪音
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+# 必须在导入 huggingface_hub 之前设置，否则不生效。
+#
+# 用直接赋值而非 os.environ.setdefault：这两项不是「用户偏好」而是
+# 「绕过已知故障的必需开关」——镜像不支持 Xet 协议、Google 桶不可达，
+# 一旦被外部环境里的残留值覆盖，下载就会失败并静默退化成 BM25 单路。
+# 若确有覆盖，下面会把原值打出来，不做无声改变。
+_HF_OVERRIDES = {
+    "HF_ENDPOINT": "https://hf-mirror.com",
+    "HF_HUB_DISABLE_XET": "1",
+    # Windows 下 huggingface_hub 无法建符号链接，关掉警告噪音
+    "HF_HUB_DISABLE_SYMLINKS_WARNING": "1",
+}
+for _key, _value in _HF_OVERRIDES.items():
+    _prev = os.environ.get(_key)
+    if _prev and _prev != _value:
+        print(f"[embedder] 覆盖环境变量 {_key}: {_prev!r} -> {_value!r}", file=sys.stderr)
+    os.environ[_key] = _value
 
 from core.config import EMBEDDING_MODEL, MODELS_DIR  # noqa: E402
 
@@ -47,8 +59,28 @@ class Embedder:
         return self._model is not None
 
     @property
+    def state(self) -> str:
+        """三态：idle（尚未加载）/ ready（已加载）/ failed（加载失败）
+
+        单看 available 分不清「还没试过」与「试过但失败了」，
+        而对用户来说前者需要等待、后者需要修配置，提示文案完全不同。
+        """
+        if self._model is not None:
+            return "ready"
+        return "failed" if self._failed else "idle"
+
+    @property
     def error(self) -> str:
         return self._error
+
+    def warmup(self) -> bool:
+        """主动加载模型并返回是否可用。
+
+        供服务启动时调用：既省掉首次提问的加载等待，也让健康检查
+        能立刻报告真实状态（否则空知识库时无人触发加载，状态一直是 idle）。
+        失败不抛异常——降级由检索层处理，不该阻断服务启动。
+        """
+        return self._ensure_loaded()
 
     def _ensure_loaded(self) -> bool:
         """确保模型已加载，返回是否可用"""
@@ -84,3 +116,20 @@ class Embedder:
         if not self._ensure_loaded():
             return []
         return [v.tolist() for v in self._model.embed(texts)]
+
+
+# 全局共享实例。
+#
+# 模型权重（约 90 MB）必须只加载一份：早期实现里每个 VectorRetriever
+# 各自 new 一个 Embedder，N 个知识库就会重复常驻 N 份权重，
+# 且 health 上报时不知道该读哪一个。此处集中到模块级单例，
+# 由 get_embedder() 提供给所有检索器。
+_shared: "Embedder | None" = None
+
+
+def get_embedder() -> Embedder:
+    """取全局 Embedder 单例（进程内模型只加载一次）"""
+    global _shared
+    if _shared is None:
+        _shared = Embedder()
+    return _shared

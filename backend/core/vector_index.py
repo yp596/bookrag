@@ -15,7 +15,7 @@
 import numpy as np
 
 from core.config import TOP_K, VECTOR_MIN_SCORE, VECTOR_MIN_SIMILARITY
-from core.embedder import Embedder
+from core.embedder import Embedder, get_embedder
 from core.splitter import Chunk
 
 
@@ -27,7 +27,8 @@ class VectorRetriever:
     """
 
     def __init__(self, embedder: Embedder | None = None) -> None:
-        self.embedder = embedder or Embedder()
+        # 默认取全局单例：模型权重只加载一份，N 个知识库不重复占用内存
+        self.embedder = embedder or get_embedder()
         self._chunks: list[Chunk] = []
         self._matrix: np.ndarray | None = None   # (N, dim)，已归一化
 

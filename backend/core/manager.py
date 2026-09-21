@@ -10,6 +10,7 @@
 若将来单个知识库规模很大，可改为 LRU 淘汰。
 """
 
+from core.embedder import get_embedder
 from core.retriever import HybridRetriever
 from core.storage import Storage
 
@@ -36,3 +37,14 @@ class KBManager:
 
     def chunk_count(self, kb_id: str) -> int:
         return self.get_retriever(kb_id).size
+
+    def vector_status(self) -> dict:
+        """向量检索的可用状态（供健康检查上报，不触发模型加载）。
+
+        直接读全局 Embedder 单例，而不是遍历已加载的检索器——
+        用户想知道的是「这个应用现在能不能做语义检索」，
+        这跟「某个知识库的索引是否已构建」无关：刚启动、还没提过问时
+        索引是懒加载的，遍历 `_index` 只会永远报 idle。
+        """
+        embedder = get_embedder()
+        return {"state": embedder.state, "error": embedder.error}

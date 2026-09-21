@@ -28,6 +28,40 @@ const testResult = ref(null)
 const isLocal = computed(() => form.llm_mode === 'local')
 const active = computed(() => (isLocal.value ? form.local : form.cloud))
 
+/**
+ * 语义检索（向量一路）的运行状态。
+ *
+ * idle 表示模型尚未加载——正常情况下一问一答就会触发加载并转为 ready，
+ * 所以这里不提示，避免刚装好就弹出无意义的警告。
+ * 只有 failed 才需要告知用户：检索已退化为关键词单路，口语化提问会漏召回。
+ */
+const vectorState = computed(() => app.health?.vector?.state || 'idle')
+const vectorTone = computed(() => {
+  if (vectorState.value === 'ready') return 'on'
+  if (vectorState.value === 'failed') return 'warn'
+  return 'idle'
+})
+const vectorLabel = computed(() => ({
+  ready: '已启用（语义 + 关键词）',
+  failed: '已降级（仅关键词）',
+}[vectorState.value] || '待加载'))
+
+const vectorHint = computed(() => {
+  const raw = app.health?.vector?.error || ''
+  const lines = [
+    '语义检索模型未能加载，当前仅用关键词匹配，口语化提问可能召回不到相关条款。',
+  ]
+  // 常见原因直接给可操作的解法，比抛原始堆栈有用
+  if (/No module named/i.test(raw)) {
+    lines.push('原因：程序缺少运行组件，建议重新安装。')
+  } else if (/SSL|CERTIFICATE|Connection|Timeout|Read timed out/i.test(raw)) {
+    lines.push('原因：模型下载失败，请检查网络后重启程序。')
+  } else if (raw) {
+    lines.push(`原因：${raw.slice(0, 160)}`)
+  }
+  return lines.join(' ')
+})
+
 onMounted(() => {
   load()
   // 运行状态里的知识库数量来自 /api/health，进页面时重新取一次，避免显示启动时的旧值
@@ -238,7 +272,18 @@ async function test() {
               <span class="k">当前模型</span>
               <span class="v">{{ app.health?.model ?? '—' }}</span>
             </div>
+            <div class="kv">
+              <span class="k">语义检索</span>
+              <span class="v">
+                <span class="dot" :class="{ on: vectorTone === 'on', warn: vectorTone === 'warn' }" />
+                {{ vectorLabel }}
+              </span>
+            </div>
           </div>
+          <!-- 向量模型不可用时给出可操作的原因，而不是让用户面对「回答变差」 -->
+          <p v-if="vectorTone === 'warn'" class="vector-hint">
+            {{ vectorHint }}
+          </p>
         </section>
       </div>
     </div>
@@ -403,5 +448,20 @@ async function test() {
 .dot.on {
   background: #22c55e;
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+.dot.warn {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
+}
+
+.vector-hint {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 2px solid #f59e0b;
 }
 </style>

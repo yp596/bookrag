@@ -194,10 +194,6 @@ class HybridRetriever:
     def size(self) -> int:
         return self.bm25.size
 
-    @property
-    def vector_available(self) -> bool:
-        return self.vector.available
-
     def retrieve(self, query: str, top_k: int = TOP_K) -> list[Hit]:
         """双路检索并融合。向量不可用时自动退化为 BM25 单路"""
         bm25_hits = self.bm25.retrieve(query, top_k=max(top_k, CANDIDATE_K))
