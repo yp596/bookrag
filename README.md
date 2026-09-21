@@ -32,6 +32,7 @@ rag/
 ├── backend/            Python FastAPI 服务
 │   ├── api/            知识库 / 问答 / 设置接口
 │   ├── core/           解析、切片、检索、LLM、流水线
+│   ├── tests/          单元测试
 │   ├── main.py         服务入口
 │   └── rag-backend.spec    PyInstaller 打包配置
 ├── frontend/           Vue 3 前端
@@ -46,6 +47,19 @@ rag/
 │   └── acceptance-packaged.cjs   打包产物端到端验收
 └── doc/                需求与实施方案
 ```
+
+## 测试
+
+```bash
+cd backend
+.venv/Scripts/python -m unittest discover -s tests -v
+```
+
+覆盖容易被改错、且改错后**不会报错只会静默降级**的逻辑：
+HF 环境变量的强制覆盖、向量模型的三态状态机、模型权重的进程内共享。
+
+打包产物的端到端验收另见 `scripts/acceptance-packaged.cjs`，
+它需要先构建出 `rag-release/win-unpacked`，验证的是真实安装形态下的用户主链路。
 
 ## 开发运行
 
