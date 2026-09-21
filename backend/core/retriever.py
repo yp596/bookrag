@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
-"""中文关键词检索（BM25）
+"""中文检索：BM25 关键词 + 向量语义 + RRF 融合
 
-为什么不用现成方案的 BM25：
+为什么 BM25 要自己实现：
     fastembed 自带的 Qdrant/bm25 使用 SimpleTokenizer，分词逻辑等价于
     re.sub(r"[^\\w]", " ", text.lower()).split()。中文没有空格分隔，
     "本产品的保修期是三年" 会被整体切成 1 个 token，关键词检索完全失效。
     因此中文场景必须先用 jieba 分词，再交给 rank_bm25。
 
-三道相关度防线（解决首轮测试暴露的噪音污染问题）：
+BM25 侧的三道相关度防线（解决首轮测试暴露的噪音污染问题）：
     1. 查询停用词过滤      去掉"的/吗/怎么"等无区分度的虚词
     2. 查询词覆盖率下限    解决"只命中一个词就入选"的误召回
                            （如"支持货到付款吗"误命中含"不支持"的发票条款）
     3. 得分双重阈值        绝对下限 + 相对最高分的比例
+
+单靠 BM25 不够：它只看词面。实测「满多少钱包邮」会被 jieba 切成
+「满/多少/钱包/邮」，真正的关键词「包邮」被吃掉，导致完全召回不到
+文档里的「满九十九元包邮」条款——口语化提问是纯字面匹配的系统性短板。
+因此引入向量一路做语义召回，两者用 RRF 融合，见 HybridRetriever。
 """
 
 from dataclasses import dataclass, field
@@ -20,7 +25,9 @@ import jieba
 from rank_bm25 import BM25Okapi
 
 from core.config import (
+    CANDIDATE_K,
     MIN_TERM_COVERAGE,
+    RRF_K,
     SCORE_THRESHOLD_ABS,
     SCORE_THRESHOLD_REL,
     TOP_K,
@@ -143,3 +150,114 @@ class BM25Retriever:
             hits.append(Hit(chunk=self._chunks[i], score=float(score), coverage=cov))
 
         return hits[:top_k]
+
+
+class HybridRetriever:
+    """双路检索 + RRF 融合。
+
+    分工：
+        向量一路负责语义——「满多少钱包邮」这类口语化提问，字面与文档无交集，
+        BM25 会完全落空；
+        BM25 一路负责词面——型号、编号、专有名词这类精确串，向量反而不敏感。
+
+    RRF（Reciprocal Rank Fusion）为什么比分数加权好：
+        BM25 得分是无上界的正数、余弦相似度落在 [0,1]，两者量纲完全不同，
+        加权前必须归一化，而归一化方式本身就很主观、依赖语料。
+        RRF 只看「名次」不看分数，天然免疫量纲差异——
+
+            score(doc) = Σ  1 / (RRF_K + rank_i(doc))
+
+        代价是丢掉了分数强弱的信息，但对召回阶段来说名次比绝对值可靠。
+
+    降级策略：
+        向量模型缺失时（例如首次运行尚未下载），自动退化为 BM25 单路，
+        不报错、不影响可用性。
+    """
+
+    def __init__(
+        self,
+        bm25: BM25Retriever | None = None,
+        vector: "VectorRetriever | None" = None,
+    ) -> None:
+        self.bm25 = bm25 or BM25Retriever()
+        if vector is None:
+            from core.vector_index import VectorRetriever
+
+            vector = VectorRetriever()
+        self.vector = vector
+
+    def build(self, chunks: list[Chunk]) -> None:
+        self.bm25.build(chunks)
+        self.vector.build(chunks)
+
+    @property
+    def size(self) -> int:
+        return self.bm25.size
+
+    @property
+    def vector_available(self) -> bool:
+        return self.vector.available
+
+    def retrieve(self, query: str, top_k: int = TOP_K) -> list[Hit]:
+        """双路检索并融合。向量不可用时自动退化为 BM25 单路"""
+        bm25_hits = self.bm25.retrieve(query, top_k=max(top_k, CANDIDATE_K))
+
+        if not self.vector.available:
+            return bm25_hits[:top_k]
+
+        vec_hits = self.vector.retrieve(query, top_k=max(top_k, CANDIDATE_K))
+
+        # 两路都空 = 知识库里确实没有相关内容，交给上层短路，不要硬凑
+        if not bm25_hits and not vec_hits:
+            return []
+
+        # 单路为空时直接用另一路，避免融合后仍为空
+        if not bm25_hits:
+            return self._to_hits(vec_hits)[:top_k]
+        if not vec_hits:
+            return bm25_hits[:top_k]
+
+        return self._fuse(bm25_hits, vec_hits)[:top_k]
+
+    @staticmethod
+    def _to_hits(vec_hits: list[tuple[Chunk, float]]) -> list[Hit]:
+        """向量结果转成统一的 Hit，coverage 记为相似度以便展示"""
+        return [Hit(chunk=c, score=s, coverage=s) for c, s in vec_hits]
+
+    @staticmethod
+    def _fuse(bm25_hits: list[Hit], vec_hits: list[tuple[Chunk, float]]) -> list[Hit]:
+        """RRF 融合两路结果，按切片文本去重（切片无稳定 id 字段）"""
+        rrf: dict[str, float] = {}
+        keep: dict[str, Hit] = {}
+        bm25_score: dict[str, float] = {}
+
+        for rank, hit in enumerate(bm25_hits):
+            key = hit.chunk.text
+            rrf[key] = rrf.get(key, 0.0) + 1.0 / (RRF_K + rank + 1)
+            keep.setdefault(key, hit)
+            bm25_score[key] = hit.score
+
+        for rank, (chunk, sim) in enumerate(vec_hits):
+            key = chunk.text
+            rrf[key] = rrf.get(key, 0.0) + 1.0 / (RRF_K + rank + 1)
+            if key not in keep:
+                keep[key] = Hit(chunk=chunk, score=sim, coverage=sim)
+
+        # 按融合分降序；score 取 BM25 原分（有则用），仅作展示与调试
+        ordered = sorted(rrf.items(), key=lambda kv: -kv[1])
+        out: list[Hit] = []
+        for key, fused in ordered:
+            hit = keep[key]
+            out.append(
+                Hit(
+                    chunk=hit.chunk,
+                    score=fused,
+                    coverage=hit.coverage,
+                    metadata={
+                        **hit.metadata,
+                        "bm25_score": bm25_score.get(key, 0.0),
+                        "rrf": fused,
+                    },
+                )
+            )
+        return out

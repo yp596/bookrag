@@ -35,6 +35,10 @@
       {
         "from": "../frontend/dist",
         "to": "frontend/dist"
+      },
+      {
+        "from": "../backend/models",
+        "to": "backend/models"
       }
     ],
     "asar": true,

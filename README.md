@@ -7,7 +7,7 @@
 ## 功能
 
 - 导入 TXT / Markdown / PDF / Word 文档，自动按小节切分成片段
-- 中文关键词检索（jieba + BM25），答案附带引用片段，可展开查看原文
+- 中文混合检索（jieba + BM25 关键词 · bge-small-zh 向量语义 · RRF 融合），答案附带引用片段，可展开查看原文
 - 流式输出，逐字返回
 - 多知识库隔离，各自独立索引
 - 本地 / 云端双模型模式，切换只需改配置
@@ -42,6 +42,8 @@ rag/
 ├── electron/           Electron 壳
 │   ├── main.js         主进程
 │   └── preload.js      IPC 安全桥
+├── scripts/            验收脚本
+│   └── acceptance-packaged.cjs   打包产物端到端验收
 └── doc/                需求与实施方案
 ```
 
@@ -57,6 +59,18 @@ python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt    # Windows
 .venv/bin/pip install -r requirements.txt        # macOS / Linux
 ```
+
+**嵌入模型**（约 91 MB，仅源码运行需要）
+
+模型未进版本库，首次用到向量检索时会自动从镜像下载到 `backend/models/`：
+
+```bash
+cd backend
+.venv/Scripts/python -c "from core.embedder import Embedder; Embedder().embed(['预热'])"
+```
+
+下载失败不影响启动——检索会自动退化为 BM25 单路，并在后端日志中打印原因。
+若需离线部署，直接把 `backend/models/` 拷贝过去即可，打包流程也是这么做的。
 
 **2. 前端**
 
@@ -123,6 +137,13 @@ npm run build     # 生成 NSIS 安装包
 
 输出在 `rag-release/`。目标机器无需安装 Python 与 Node。
 
+嵌入模型（`backend/models/`，约 91 MB）经 electron-builder 的 `extraResources` 一并打进安装包，
+终端用户开箱即用、无需联网下载；主进程通过 `RAG_MODELS_DIR` 告知后端其位置。
+
+> 改 `backend/rag-backend.spec` 的排除列表时要留意：`core/embedder.py` 里
+> `fastembed` 是函数内延迟导入，静态分析看不到，依赖链上的包必须写进 `hiddenimports`。
+> 漏了不会报错——向量检索会静默退化成 BM25 单路。
+
 ## 数据位置
 
 | 运行方式 | 数据目录 |
@@ -137,9 +158,9 @@ npm run build     # 生成 NSIS 安装包
 
 ## 当前限制
 
-- **仅支持 BM25 关键词检索**。向量检索因模型文件未能下载而尚未接入，因此口语化提问（如「邮费怎么算」）可能召回不到文档中的对应条款。词面能对上的提问不受影响。
 - 文档支持 TXT / Markdown / PDF / Word，暂不支持图片、表格与扫描件的结构化解析。
 - 本地小模型（1B 级）适合文档抽取式问答，复杂推理能力有限。
+- 检索未接 Rerank，长文档下排序精度仍有提升空间。
 
 ## 许可
 

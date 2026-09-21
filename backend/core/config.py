@@ -34,7 +34,19 @@ def _resolve_base_dir() -> Path:
 # ====================== 路径 ======================
 BASE_DIR = _resolve_base_dir()
 DATA_DIR = BASE_DIR / "data"
-MODELS_DIR = BASE_DIR / "models"
+
+# 模型目录（只读资源）与数据目录分开：数据要可写、随用户走，
+# 模型是随包分发的只读文件，打包后位于 resources/backend/models。
+# 经 RAG_MODELS_DIR 由主进程指定，独立运行时回落到 exe 同级的 models/。
+_models_override = os.environ.get("RAG_MODELS_DIR")
+if _models_override:
+    MODELS_DIR = Path(_models_override)
+elif getattr(sys, "frozen", False):
+    # 冻结态：PyInstaller onedir 的 exe 在 <pkg>/rag-backend.exe，
+    # 资源在同级 _internal/ 或 exe 同级目录，这里按后者放置模型
+    MODELS_DIR = Path(sys.executable).resolve().parent / "models"
+else:
+    MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 DB_PATH = DATA_DIR / "rag.db"                          # 知识库元数据与切片
 SETTINGS_PATH = DATA_DIR / "settings.json"             # 模型配置
 CHROMA_DIR = DATA_DIR / "chroma_db"                    # 向量库（待接入）
@@ -52,6 +64,17 @@ CANDIDATE_K = 20              # 粗排候选数（为融合与重排预留）
 SCORE_THRESHOLD_ABS = 0.05    # 绝对下限，过滤近乎无关的结果
 SCORE_THRESHOLD_REL = 0.25    # 相对阈值，低于最高分该比例的结果丢弃
 MIN_TERM_COVERAGE = 0.5       # 查询词覆盖率下限，解决"只命中一个词就入选"的误召回
+
+# ====================== 向量检索 ======================
+# 余弦相似度不能用绝对阈值苛求——同领域中文句子对普遍有 0.3+ 的基础相似度。
+# 但仍需要一道「明显跑题」的下限：否则任何查询都能找到"相对最像"的片段，
+# 无关问题也会污染上下文。
+VECTOR_MIN_SIMILARITY = 0.45  # 相对阈值：低于最高分该比例的向量结果丢弃
+VECTOR_MIN_SCORE = 0.55       # 绝对下限：低于此相似度视为无关，直接丢弃
+
+# RRF（倒数排序融合）常数。值越大，靠前名次的优势越平缓。
+# 60 是原论文与工业界常用取值，对名次差异不敏感、抗单路噪声。
+RRF_K = 60
 
 # ====================== 文本向量化 ======================
 EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"    # 中文 ONNX 嵌入模型（需预下载）

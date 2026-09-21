@@ -20,7 +20,7 @@ from pathlib import Path
 from core.config import MIN_TERM_COVERAGE, NO_CONTEXT_REPLY, TOP_K
 from core.llm import LLMClient
 from core.loader import load_document
-from core.retriever import BM25Retriever, Hit
+from core.retriever import HybridRetriever, Hit
 from core.splitter import Chunk, split_by_section
 
 
@@ -57,7 +57,7 @@ class RAGPipeline:
         self,
         llm_mode: str = "local",
         top_k: int = TOP_K,
-        retriever: BM25Retriever | None = None,
+        retriever: HybridRetriever | None = None,
         llm: LLMClient | None = None,
         llm_config: dict | None = None,
     ) -> None:
@@ -68,7 +68,7 @@ class RAGPipeline:
         else:
             self.llm = LLMClient(mode=llm_mode)
 
-        self.retriever = retriever if retriever is not None else BM25Retriever()
+        self.retriever = retriever if retriever is not None else HybridRetriever()
         self.top_k = top_k
         self._chunks: list[Chunk] = []
 

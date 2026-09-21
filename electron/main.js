@@ -44,6 +44,14 @@ const BACKEND_DIR = app.isPackaged
  */
 const DATA_DIR = app.isPackaged ? app.getPath('userData') : BACKEND_DIR
 
+/**
+ * 模型目录（只读资源，随包分发）。
+ *
+ * 与数据目录相反：模型不该被用户改动，也不该跟着用户走，
+ * 它属于安装包的一部分，因此放在 resources/backend/models。
+ */
+const MODELS_DIR = path.join(BACKEND_DIR, 'models')
+
 /** 后端状态，渲染进程通过 IPC 查询与订阅 */
 let backend = { status: 'starting', url: '', message: '' }
 let backendProc = null
@@ -111,6 +119,9 @@ function startBackend(port) {
       ...process.env,
       // 指定数据目录，覆盖后端默认的「exe 同级」推导逻辑
       RAG_DATA_DIR: DATA_DIR,
+      // 指定模型目录：打包后它是 resources/backend/models，
+      // 与 exe 同级推导出的路径并不一致，必须显式传入
+      RAG_MODELS_DIR: MODELS_DIR,
       // 本机提交内存常年吃紧，OpenBLAS 多线程分配会直接终止进程，必须限制线程数
       OPENBLAS_NUM_THREADS: '1',
       OMP_NUM_THREADS: '1',
