@@ -17,8 +17,13 @@ release/
 *.exe
 
 # ---------- 运行时数据 ----------
-# 含用户导入的知识库（rag.db）与明文存储的云端 API Key（settings.json），严禁入库
+# 含用户导入的知识库（rag.db）与明文存储的云端 API Key（settings.json），严禁入库。
+# 逐个文件名兜底：不论数据目录被指到哪，这两个文件都不会被误提交
 backend/data/
+rag.db
+rag.db-shm
+rag.db-wal
+settings.json
 
 # ---------- 编辑器 / 系统 ----------
 .vscode/

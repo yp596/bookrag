@@ -6,9 +6,55 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "pack": "electron-builder --win --dir",
+    "build": "electron-builder --win nsis"
   },
   "devDependencies": {
-    "electron": "^44.4.3"
+    "electron": "^44.4.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "online.wzey.bookrag",
+    "productName": "RAG知识库",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "../../rag-release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/rag-backend",
+        "to": "backend"
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RAG知识库",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

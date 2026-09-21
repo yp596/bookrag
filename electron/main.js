@@ -21,9 +21,28 @@ const { spawn } = require('node:child_process')
 
 const DEV = process.argv.includes('--dev')
 const DEV_URL = process.env.RAG_DEV_URL || 'http://localhost:5178'
-const ROOT = path.resolve(__dirname, '..')
-const BACKEND_DIR = path.join(ROOT, 'backend')
 const HEALTH_TIMEOUT_MS = 90000
+
+/**
+ * 路径基准。
+ *
+ * 打包后代码跑在 app.asar 里，__dirname 指向 asar 内部而非磁盘真实目录，
+ * 且 asar 里的 exe 无法被 spawn 执行，所以随包的后端必须解包到 resources/。
+ * 开发期则仍按源码目录结构定位，两种形态用 app.isPackaged 区分。
+ */
+const ROOT = path.resolve(__dirname, '..')
+const BACKEND_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'backend') // extraResources 投放位置
+  : path.join(ROOT, 'backend')
+
+/**
+ * 用户数据根目录。装到 Program Files 后安装目录只读，且升级会覆盖，
+ * 因此知识库与配置必须落到 Electron 的用户数据目录。
+ *
+ * 传的是「根」，不是「data 目录」——后端 core/config.py 会在其下自行拼 data/，
+ * 与独立运行 exe 时的 %APPDATA%/rag-desktop 形态保持一致。
+ */
+const DATA_DIR = app.isPackaged ? app.getPath('userData') : BACKEND_DIR
 
 /** 后端状态，渲染进程通过 IPC 查询与订阅 */
 let backend = { status: 'starting', url: '', message: '' }
@@ -48,13 +67,25 @@ function findFreePort() {
 
 /** 解析后端启动方式：打包后优先用 PyInstaller 产物，开发期用 venv 解释器 */
 function resolveBackendCommand(port) {
-  const candidates = [
-    path.join(BACKEND_DIR, 'dist', 'rag-backend', 'rag-backend.exe'), // onedir
-    path.join(BACKEND_DIR, 'dist', 'rag-backend.exe'),                // onefile
-    path.join(BACKEND_DIR, 'dist', 'rag-backend', 'rag-backend'),     // onedir (posix)
-  ]
+  const candidates = app.isPackaged
+    ? [
+        // extraResources 把 onedir 产物投放到 resources/backend/，
+        // exe 与 _internal 是同级关系
+        path.join(BACKEND_DIR, 'rag-backend.exe'),
+        path.join(BACKEND_DIR, 'rag-backend', 'rag-backend.exe'),
+      ]
+    : [
+        path.join(BACKEND_DIR, 'dist', 'rag-backend', 'rag-backend.exe'), // onedir
+        path.join(BACKEND_DIR, 'dist', 'rag-backend.exe'),                // onefile
+        path.join(BACKEND_DIR, 'dist', 'rag-backend', 'rag-backend'),     // onedir (posix)
+      ]
   for (const exe of candidates) {
     if (fs.existsSync(exe)) return { cmd: exe, args: ['--port', String(port)] }
+  }
+
+  // 打包后没有 venv 可退，直接给出明确原因，避免用户看到一句含糊的启动失败
+  if (app.isPackaged) {
+    throw new Error(`未找到后端程序，安装包可能不完整：${candidates[0]}`)
   }
 
   const py =
@@ -70,11 +101,16 @@ function resolveBackendCommand(port) {
 function startBackend(port) {
   const { cmd, args } = resolveBackendCommand(port)
 
+  // 打包后 exe 所在目录只读，数据要落到用户目录
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+
   backendProc = spawn(cmd, args, {
-    cwd: BACKEND_DIR,
+    cwd: path.dirname(cmd),
     windowsHide: true,
     env: {
       ...process.env,
+      // 指定数据目录，覆盖后端默认的「exe 同级」推导逻辑
+      RAG_DATA_DIR: DATA_DIR,
       // 本机提交内存常年吃紧，OpenBLAS 多线程分配会直接终止进程，必须限制线程数
       OPENBLAS_NUM_THREADS: '1',
       OMP_NUM_THREADS: '1',
@@ -177,7 +213,12 @@ function createWindow() {
     return { action: 'deny' }
   })
 
-  const distIndex = path.join(ROOT, 'frontend', 'dist', 'index.html')
+  // 打包后前端产物由 extraResources 投放到 resources/frontend/dist
+  // （electron-builder 的 files 不支持 ../ 跳出项目根，只能走 extraResources）；
+  // 开发期仍从源码树读 frontend/dist
+  const distIndex = app.isPackaged
+    ? path.join(process.resourcesPath, 'frontend', 'dist', 'index.html')
+    : path.join(ROOT, 'frontend', 'dist', 'index.html')
   if (DEV) {
     mainWindow.loadURL(DEV_URL)
   } else if (fs.existsSync(distIndex)) {
