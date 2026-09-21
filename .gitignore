@@ -1,0 +1,27 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ---------- Node ----------
+node_modules/
+
+# ---------- 构建产物 ----------
+frontend/dist/
+backend/dist/
+backend/build/
+release/
+*.exe
+
+# ---------- 运行时数据 ----------
+# 含用户导入的知识库（rag.db）与明文存储的云端 API Key（settings.json），严禁入库
+backend/data/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

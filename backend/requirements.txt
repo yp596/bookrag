@@ -1,0 +1,30 @@
+# ============ Web 服务 ============
+fastapi
+uvicorn[standard]
+pydantic
+sse-starlette
+python-multipart        # 文件上传
+
+# ============ LangChain 编排 ============
+langchain>=1.0
+langchain-openai
+langchain-chroma
+langchain-text-splitters
+
+# ============ 向量库与嵌入（ONNX，不引入 torch） ============
+chromadb==1.5.9
+fastembed
+onnxruntime
+
+# ============ 中文分词与关键词检索 ============
+jieba
+rank-bm25
+
+# ============ 文档解析 ============
+pypdf
+python-docx
+
+# ============ LLM 客户端 ============
+# core/llm.py 直接依赖，原先靠 langchain-openai 间接带入，
+# 传递依赖一旦变动就会缺包，此处显式声明
+openai
