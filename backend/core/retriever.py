@@ -196,13 +196,18 @@ class HybridRetriever:
         vector: "VectorRetriever | None" = None,
         kb_id: str | None = None,
         cache_dir=None,
+        use_qdrant: bool = False,
     ) -> None:
         self.bm25 = bm25 or BM25Retriever()
         if vector is None:
             from core.vector_index import VectorRetriever
 
             kwargs = {} if cache_dir is None else {"cache_dir": cache_dir}
-            vector = VectorRetriever(kb_id=kb_id, **kwargs)
+            if use_qdrant:
+                from core.qdrant_index import QdrantVectorRetriever
+                vector = QdrantVectorRetriever(kb_id=kb_id)
+            else:
+                vector = VectorRetriever(kb_id=kb_id, **kwargs)
         self.vector = vector
         self._cache: dict[str, list[Hit]] = {}
         self._cache_enabled = True

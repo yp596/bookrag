@@ -95,6 +95,12 @@ export const api = {
   deleteCrawlSchedule: (kbId, scheduleId) => http.delete(`/kb/${kbId}/crawl-schedules/${scheduleId}`),
   listCrawlHistory: (kbId, limit) => http.get(`/kb/${kbId}/crawl-history`, { params: { limit } }),
   incrementalFetch: (kbId, payload) => http.post(`/kb/${kbId}/incremental-fetch`, payload),
+  createAgentTask: (kbId, payload) => http.post(`/kb/${kbId}/agent-tasks`, payload),
+  listAgentTasks: (kbId) => http.get(`/kb/${kbId}/agent-tasks`),
+  getAgentTask: (kbId, taskId) => http.get(`/kb/${kbId}/agent-tasks/${taskId}`),
+  deleteAgentTask: (kbId, taskId) => http.delete(`/kb/${kbId}/agent-tasks/${taskId}`),
+  addAgentTaskStep: (kbId, taskId, payload) => http.post(`/kb/${kbId}/agent-tasks/${taskId}/steps`, payload),
+  executeAgentTask: (kbId, taskId) => http.post(`/kb/${kbId}/agent-tasks/${taskId}/execute`),
 }
 
 // ====================== SSE 解析 ======================

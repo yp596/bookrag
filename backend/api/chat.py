@@ -59,6 +59,7 @@ def _build_pipeline(kb_id: str, top_k: int | None) -> RAGPipeline:
             model=profile["model"],
         ),
         top_k=top_k or settings.get("top_k", 3),
+        use_qdrant=settings.get("use_qdrant", False),
     )
 
 

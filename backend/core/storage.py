@@ -114,6 +114,30 @@ CREATE TABLE IF NOT EXISTS crawl_history (
     created_at  TEXT NOT NULL,
     FOREIGN KEY (kb_id) REFERENCES kb(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS agent_task (
+    id          TEXT PRIMARY KEY,
+    kb_id       TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending',  -- pending/running/completed/failed
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    FOREIGN KEY (kb_id) REFERENCES kb(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_task_step (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending',  -- pending/running/completed/failed
+    result      TEXT,
+    step_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES agent_task(id) ON DELETE CASCADE
+);
 """
 
 
@@ -854,4 +878,100 @@ class Storage:
                 (kb_id, limit),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    # ---------- Agent 任务管理 ----------
+    def create_agent_task(self, kb_id: str, title: str, description: str = "") -> dict:
+        """创建 Agent 任务"""
+        task_id = _new_id()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO agent_task (id, kb_id, title, description, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+                (task_id, kb_id, title, description, _now(), _now()),
+            )
+        return self.get_agent_task(task_id)
+
+    def get_agent_task(self, task_id: str) -> dict | None:
+        """获取 Agent 任务"""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM agent_task WHERE id = ?", (task_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_agent_tasks(self, kb_id: str) -> list[dict]:
+        """列出知识库的所有 Agent 任务"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_task WHERE kb_id = ? ORDER BY created_at DESC",
+                (kb_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_agent_task(self, task_id: str, **kwargs) -> bool:
+        """更新 Agent 任务"""
+        allowed = {'title', 'description', 'status'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        set_clause = ', '.join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [_now(), task_id]
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE agent_task SET {set_clause}, updated_at = ? WHERE id = ?",
+                values,
+            )
+            return cur.rowcount > 0
+
+    def delete_agent_task(self, task_id: str) -> bool:
+        """删除 Agent 任务"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM agent_task_step WHERE task_id = ?", (task_id,))
+            cur = conn.execute("DELETE FROM agent_task WHERE id = ?", (task_id,))
+            return cur.rowcount > 0
+
+    def add_agent_task_step(self, task_id: str, title: str, description: str = "", step_order: int = 0) -> dict:
+        """添加任务步骤"""
+        step_id = _new_id()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO agent_task_step (id, task_id, title, description, status, step_order, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+                (step_id, task_id, title, description, step_order, _now(), _now()),
+            )
+        return self.get_agent_task_step(step_id)
+
+    def get_agent_task_step(self, step_id: str) -> dict | None:
+        """获取任务步骤"""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM agent_task_step WHERE id = ?", (step_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_agent_task_steps(self, task_id: str) -> list[dict]:
+        """列出任务的所有步骤"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_task_step WHERE task_id = ? ORDER BY step_order",
+                (task_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_agent_task_step(self, step_id: str, **kwargs) -> bool:
+        """更新任务步骤"""
+        allowed = {'title', 'description', 'status', 'result', 'step_order'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        set_clause = ', '.join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [_now(), step_id]
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE agent_task_step SET {set_clause}, updated_at = ? WHERE id = ?",
+                values,
+            )
+            return cur.rowcount > 0
+
+    def delete_agent_task_step(self, step_id: str) -> bool:
+        """删除任务步骤"""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM agent_task_step WHERE id = ?", (step_id,))
+            return cur.rowcount > 0
 

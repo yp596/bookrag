@@ -77,6 +77,10 @@ VECTOR_MIN_SCORE = 0.55       # 绝对下限：低于此相似度视为无关，
 # 归一化后各维度值域 [-1, 1]，int8 量化精度足够（误差 < 0.4%）。
 VECTOR_QUANTIZE = True
 
+# Qdrant 向量库配置
+USE_QDRANT = False              # 是否使用 Qdrant 替代 Chroma
+QDRANT_DIR = DATA_DIR / "qdrant"  # Qdrant 本地存储路径
+
 # RRF（倒数排序融合）常数。值越大，靠前名次的优势越平缓。
 # 60 是原论文与工业界常用取值，对名次差异不敏感、抗单路噪声。
 RRF_K = 60

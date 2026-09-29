@@ -654,6 +654,115 @@ def incremental_fetch(kb_id: str, data: dict) -> dict:
         raise HTTPException(status_code=502, detail=f"爬取失败：{e}") from e
 
 
+class AgentTaskRequest(BaseModel):
+    title: str
+    description: str = ""
+
+
+class AgentTaskStepRequest(BaseModel):
+    title: str
+    description: str = ""
+    step_order: int = 0
+
+
+@router.post("/{kb_id}/agent-tasks")
+def create_agent_task(kb_id: str, req: AgentTaskRequest) -> dict:
+    """创建 Agent 任务"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    task = storage.create_agent_task(kb_id, req.title, req.description)
+    return {"ok": True, "task": task}
+
+
+@router.get("/{kb_id}/agent-tasks")
+def list_agent_tasks(kb_id: str) -> dict:
+    """列出知识库的所有 Agent 任务"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    tasks = storage.list_agent_tasks(kb_id)
+    return {"ok": True, "tasks": tasks}
+
+
+@router.get("/{kb_id}/agent-tasks/{task_id}")
+def get_agent_task(kb_id: str, task_id: str) -> dict:
+    """获取 Agent 任务详情"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    task = storage.get_agent_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    steps = storage.list_agent_task_steps(task_id)
+    return {"ok": True, "task": task, "steps": steps}
+
+
+@router.delete("/{kb_id}/agent-tasks/{task_id}")
+def delete_agent_task(kb_id: str, task_id: str) -> dict:
+    """删除 Agent 任务"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    if not storage.delete_agent_task(task_id):
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return {"ok": True}
+
+
+@router.post("/{kb_id}/agent-tasks/{task_id}/steps")
+def add_agent_task_step(kb_id: str, task_id: str, req: AgentTaskStepRequest) -> dict:
+    """添加任务步骤"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    task = storage.get_agent_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    step = storage.add_agent_task_step(task_id, req.title, req.description, req.step_order)
+    return {"ok": True, "step": step}
+
+
+@router.post("/{kb_id}/agent-tasks/{task_id}/execute")
+def execute_agent_task(kb_id: str, task_id: str) -> dict:
+    """执行 Agent 任务
+
+    按顺序执行任务步骤，每个步骤调用 LLM 生成结果。
+    """
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    task = storage.get_agent_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    steps = storage.list_agent_task_steps(task_id)
+    if not steps:
+        raise HTTPException(status_code=400, detail="任务没有步骤")
+
+    # 更新任务状态为运行中
+    storage.update_agent_task(task_id, status="running")
+
+    pipeline = _build_pipeline(kb_id, None)
+    results = []
+
+    try:
+        for step in steps:
+            # 更新步骤状态为运行中
+            storage.update_agent_task_step(step["id"], status="running")
+
+            # 执行步骤（调用 LLM）
+            try:
+                context = f"任务：{task['title']}\n步骤：{step['title']}\n描述：{step['description']}"
+                result = pipeline.llm.chat(step["title"], context)
+                storage.update_agent_task_step(step["id"], status="completed", result=result)
+                results.append({"step_id": step["id"], "result": result})
+            except Exception as e:
+                storage.update_agent_task_step(step["id"], status="failed", result=str(e))
+                results.append({"step_id": step["id"], "error": str(e)})
+
+        # 更新任务状态为已完成
+        storage.update_agent_task(task_id, status="completed")
+        return {"ok": True, "results": results}
+    except Exception as e:
+        storage.update_agent_task(task_id, status="failed")
+        raise HTTPException(status_code=500, detail=f"任务执行失败：{e}") from e
+
+
 @router.post("/compare")
 def compare_documents(data: dict) -> dict:
     """文档对比：返回多个文档的内容

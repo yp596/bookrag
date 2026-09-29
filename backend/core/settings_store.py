@@ -29,7 +29,7 @@ from core.config import (
 
 # 允许持久化的字段，避免前端写入无关内容
 _ALLOWED_KEYS = {"llm_mode", "local", "cloud", "top_k", "chunk_size", "chunk_overlap",
-                 "cross_rerank_enabled"}
+                 "cross_rerank_enabled", "use_qdrant"}
 
 # 切片参数的可调范围：过小则语义碎片化，过大则单片混入多主题
 CHUNK_SIZE_MIN, CHUNK_SIZE_MAX = 200, 2000
@@ -67,6 +67,7 @@ def _defaults() -> dict:
         "top_k": TOP_K,
         "chunk_size": MAX_CHUNK_SIZE,
         "chunk_overlap": CHUNK_OVERLAP,
+        "use_qdrant": False,
     }
 
 

@@ -153,6 +153,67 @@ async function submitIncrementalFetch() {
   }
 }
 
+// ---------- Agent 任务面板 ----------
+const agentTaskTitle = ref('')
+const agentTaskDesc = ref('')
+const agentTaskLoading = ref(false)
+const agentTasks = ref([])
+const showAgentTask = ref(false)
+
+async function submitAgentTask() {
+  const title = agentTaskTitle.value.trim()
+  if (!title || agentTaskLoading.value) return
+  if (!kb.currentId) {
+    antMessage.warning('请先创建或选择知识库')
+    return
+  }
+  agentTaskLoading.value = true
+  try {
+    await api.createAgentTask(kb.currentId, {
+      title,
+      description: agentTaskDesc.value,
+    })
+    antMessage.success('任务已创建')
+    agentTaskTitle.value = ''
+    agentTaskDesc.value = ''
+    await loadAgentTasks()
+  } catch (e) {
+    antMessage.error(`创建失败：${e.message}`)
+  } finally {
+    agentTaskLoading.value = false
+  }
+}
+
+async function loadAgentTasks() {
+  if (!kb.currentId) return
+  try {
+    const res = await api.listAgentTasks(kb.currentId)
+    agentTasks.value = res.tasks || []
+  } catch (e) {
+    antMessage.error(`加载失败：${e.message}`)
+  }
+}
+
+async function executeTask(taskId) {
+  try {
+    await api.executeAgentTask(kb.currentId, taskId)
+    antMessage.success('任务执行完成')
+    await loadAgentTasks()
+  } catch (e) {
+    antMessage.error(`执行失败：${e.message}`)
+  }
+}
+
+async function deleteTask(taskId) {
+  try {
+    await api.deleteAgentTask(kb.currentId, taskId)
+    antMessage.success('已删除')
+    await loadAgentTasks()
+  } catch (e) {
+    antMessage.error(`删除失败：${e.message}`)
+  }
+}
+
 // ---------- 文档搜索过滤 ----------
 // ---------- 标签筛选 ----------
 const selectedTags = ref([])
@@ -897,6 +958,58 @@ function formatTime(s) {
                 >
                   开始增量爬取
                 </a-button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agent 任务面板 -->
+          <div class="agent-task-section">
+            <div class="agent-task-header">
+              <span class="agent-task-title">Agent 任务</span>
+              <a-button size="small" type="link" @click="showAgentTask = !showAgentTask">
+                {{ showAgentTask ? '收起' : '展开' }}
+              </a-button>
+            </div>
+            <div v-if="showAgentTask" class="agent-task-body">
+              <div class="agent-task-item">
+                <label class="agent-task-label">任务标题</label>
+                <a-input
+                  v-model:value="agentTaskTitle"
+                  placeholder="例如：分析文档内容"
+                  :disabled="agentTaskLoading"
+                />
+              </div>
+              <div class="agent-task-item">
+                <label class="agent-task-label">任务描述</label>
+                <a-textarea
+                  v-model:value="agentTaskDesc"
+                  placeholder="描述任务目标"
+                  :rows="2"
+                  :disabled="agentTaskLoading"
+                />
+              </div>
+              <div class="agent-task-actions">
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="agentTaskLoading"
+                  :disabled="!agentTaskTitle.trim()"
+                  @click="submitAgentTask"
+                >
+                  创建任务
+                </a-button>
+              </div>
+              <div v-if="agentTasks.length" class="agent-task-list">
+                <div v-for="t in agentTasks" :key="t.id" class="agent-task-item-row">
+                  <span class="agent-task-name">{{ t.title }}</span>
+                  <a-tag :color="t.status === 'completed' ? 'success' : t.status === 'failed' ? 'error' : 'processing'">
+                    {{ t.status }}
+                  </a-tag>
+                  <a-button size="small" type="text" @click="executeTask(t.id)" :disabled="t.status === 'running'">
+                    执行
+                  </a-button>
+                  <a-button size="small" type="text" @click="deleteTask(t.id)">删除</a-button>
+                </div>
               </div>
             </div>
           </div>

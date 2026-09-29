@@ -24,6 +24,7 @@ const form = reactive({
   chunk_overlap: 100,
   cross_rerank_enabled: false,
   font_size: 'medium',
+  use_qdrant: false,
 })
 
 const loading = ref(true)
@@ -430,6 +431,12 @@ async function handleRestore() {
                 <a-switch v-model:checked="form.cross_rerank_enabled" />
                 <div class="tip muted">
                   可选第二阶段，首次开启需下载约 40MB 模型；失败自动回退加权精排。
+                </div>
+              </a-form-item>
+              <a-form-item label="使用 Qdrant 向量库">
+                <a-switch v-model:checked="form.use_qdrant" />
+                <div class="tip muted">
+                  使用 Qdrant 替代 Chroma，需安装 qdrant-client。启用后需重启后端服务。
                 </div>
               </a-form-item>
             </a-form>
