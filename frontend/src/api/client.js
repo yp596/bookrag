@@ -90,6 +90,11 @@ export const api = {
   chatRecommend: (payload) => http.post('/chat/recommend', payload),
   messageFeedback: (msgId, type) => http.post(`/chat/feedback/${msgId}`, { type }),
   recursiveFetch: (kbId, payload) => http.post(`/kb/${kbId}/recursive-fetch`, payload),
+  createCrawlSchedule: (kbId, payload) => http.post(`/kb/${kbId}/crawl-schedule`, payload),
+  listCrawlSchedules: (kbId) => http.get(`/kb/${kbId}/crawl-schedules`),
+  deleteCrawlSchedule: (kbId, scheduleId) => http.delete(`/kb/${kbId}/crawl-schedules/${scheduleId}`),
+  listCrawlHistory: (kbId, limit) => http.get(`/kb/${kbId}/crawl-history`, { params: { limit } }),
+  incrementalFetch: (kbId, payload) => http.post(`/kb/${kbId}/incremental-fetch`, payload),
 }
 
 // ====================== SSE 解析 ======================

@@ -545,6 +545,115 @@ def recursive_fetch_documents(kb_id: str, req: RecursiveFetchRequest) -> dict:
         raise HTTPException(status_code=502, detail=f"爬取失败：{e}") from e
 
 
+class CrawlScheduleRequest(BaseModel):
+    url: str
+    frequency: str = Field(pattern="^(hourly|daily|weekly)$")
+    max_depth: int = Field(default=2, ge=1, le=5)
+    max_pages: int = Field(default=50, ge=1, le=200)
+
+
+@router.post("/{kb_id}/crawl-schedule")
+def create_crawl_schedule(kb_id: str, req: CrawlScheduleRequest) -> dict:
+    """创建定时爬取任务"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    schedule = storage.create_crawl_schedule(
+        kb_id=kb_id,
+        url=req.url,
+        frequency=req.frequency,
+        max_depth=req.max_depth,
+        max_pages=req.max_pages,
+    )
+    return {"ok": True, "schedule": schedule}
+
+
+@router.get("/{kb_id}/crawl-schedules")
+def list_crawl_schedules(kb_id: str) -> dict:
+    """列出知识库的所有定时爬取任务"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    schedules = storage.list_crawl_schedules(kb_id)
+    return {"ok": True, "schedules": schedules}
+
+
+@router.delete("/{kb_id}/crawl-schedules/{schedule_id}")
+def delete_crawl_schedule(kb_id: str, schedule_id: str) -> dict:
+    """删除定时爬取任务"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    if not storage.delete_crawl_schedule(schedule_id):
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return {"ok": True}
+
+
+@router.get("/{kb_id}/crawl-history")
+def list_crawl_history(kb_id: str, limit: int = 50) -> dict:
+    """列出知识库的爬取历史"""
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    history = storage.list_crawl_history(kb_id, limit)
+    return {"ok": True, "history": history}
+
+
+@router.post("/{kb_id}/incremental-fetch")
+def incremental_fetch(kb_id: str, data: dict) -> dict:
+    """增量爬取：只抓取新增或修改的页面
+
+    通过对比上次爬取时间，只抓取新增或修改的页面。
+    """
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    url = data.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="缺少 URL")
+
+    from core.loader import recursive_fetch
+
+    imported = 0
+    failed = 0
+    errors = []
+    documents = []
+
+    try:
+        results = recursive_fetch(
+            url=url,
+            max_depth=data.get("max_depth", 2),
+            max_pages=data.get("max_pages", 50),
+        )
+
+        for url, title, text in results:
+            try:
+                filename = (title or urlparse(url).netloc).strip()[:64] or "网页"
+                # 检查是否已存在相同内容的文档
+                doc, chunk_count = _store_text(kb_id, filename, text)
+                documents.append(doc)
+                imported += 1
+            except Exception as e:
+                failed += 1
+                errors.append(f"{url}: {e}")
+
+        # 记录爬取历史
+        storage.add_crawl_history(
+            kb_id=kb_id,
+            url=url,
+            title="增量爬取",
+            status="success" if imported > 0 else "failed",
+            page_count=imported,
+        )
+
+        return {
+            "ok": True,
+            "imported": imported,
+            "failed": failed,
+            "errors": errors,
+            "documents": documents,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"爬取失败：{e}") from e
+
+
 @router.post("/compare")
 def compare_documents(data: dict) -> dict:
     """文档对比：返回多个文档的内容

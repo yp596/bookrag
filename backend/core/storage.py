@@ -90,6 +90,30 @@ CREATE TABLE IF NOT EXISTS user_preference (
     value      TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS crawl_schedule (
+    id          TEXT PRIMARY KEY,
+    kb_id       TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    frequency   TEXT NOT NULL,          -- hourly/daily/weekly
+    max_depth   INTEGER DEFAULT 2,
+    max_pages   INTEGER DEFAULT 50,
+    enabled     INTEGER DEFAULT 1,
+    last_run    TEXT,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (kb_id) REFERENCES kb(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS crawl_history (
+    id          TEXT PRIMARY KEY,
+    kb_id       TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    title       TEXT,
+    status      TEXT NOT NULL,          -- success/failed
+    page_count  INTEGER DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (kb_id) REFERENCES kb(id) ON DELETE CASCADE
+);
 """
 
 
@@ -747,19 +771,87 @@ class Storage:
             )
             return cur.rowcount > 0
 
-    def update_document_status(self, doc_id: str, status: str) -> bool:
-        """更新文档状态
+    # ---------- 爬取调度 ----------
+    def create_crawl_schedule(self, kb_id: str, url: str, frequency: str, max_depth: int = 2, max_pages: int = 50) -> dict:
+        """创建定时爬取任务"""
+        schedule_id = _new_id()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO crawl_schedule (id, kb_id, url, frequency, max_depth, max_pages, enabled, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+                (schedule_id, kb_id, url, frequency, max_depth, max_pages, _now()),
+            )
+        return self.get_crawl_schedule(schedule_id)
 
-        Args:
-            doc_id: 文档 ID
-            status: 状态（pending/processing/completed/failed）
+    def get_crawl_schedule(self, schedule_id: str) -> dict | None:
+        """获取定时爬取任务"""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM crawl_schedule WHERE id = ?", (schedule_id,)).fetchone()
+            return dict(row) if row else None
 
-        Returns:
-            是否更新成功
-        """
+    def list_crawl_schedules(self, kb_id: str) -> list[dict]:
+        """列出知识库的所有定时爬取任务"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM crawl_schedule WHERE kb_id = ? ORDER BY created_at DESC",
+                (kb_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def update_crawl_schedule(self, schedule_id: str, **kwargs) -> bool:
+        """更新定时爬取任务"""
+        allowed = {'url', 'frequency', 'max_depth', 'max_pages', 'enabled'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        set_clause = ', '.join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [schedule_id]
         with self._connect() as conn:
             cur = conn.execute(
-                "UPDATE doc SET status = ? WHERE id = ?",
-                (status, doc_id),
+                f"UPDATE crawl_schedule SET {set_clause} WHERE id = ?",
+                values,
             )
             return cur.rowcount > 0
+
+    def delete_crawl_schedule(self, schedule_id: str) -> bool:
+        """删除定时爬取任务"""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM crawl_schedule WHERE id = ?", (schedule_id,))
+            return cur.rowcount > 0
+
+    def update_crawl_schedule_last_run(self, schedule_id: str) -> bool:
+        """更新最后运行时间"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE crawl_schedule SET last_run = ? WHERE id = ?",
+                (_now(), schedule_id),
+            )
+            return cur.rowcount > 0
+
+    # ---------- 爬取历史 ----------
+    def add_crawl_history(self, kb_id: str, url: str, title: str, status: str, page_count: int = 0) -> dict:
+        """添加爬取历史记录"""
+        history_id = _new_id()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO crawl_history (id, kb_id, url, title, status, page_count, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (history_id, kb_id, url, title, status, page_count, _now()),
+            )
+        return self.get_crawl_history(history_id)
+
+    def get_crawl_history(self, history_id: str) -> dict | None:
+        """获取爬取历史记录"""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM crawl_history WHERE id = ?", (history_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_crawl_history(self, kb_id: str, limit: int = 50) -> list[dict]:
+        """列出知识库的爬取历史"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM crawl_history WHERE kb_id = ? ORDER BY created_at DESC LIMIT ?",
+                (kb_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+

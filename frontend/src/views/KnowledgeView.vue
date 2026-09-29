@@ -75,6 +75,84 @@ async function submitRecursiveFetch() {
   }
 }
 
+// ---------- 定时爬取 ----------
+const scheduleUrl = ref('')
+const scheduleFrequency = ref('daily')
+const scheduleLoading = ref(false)
+const schedules = ref([])
+const showSchedule = ref(false)
+
+async function submitSchedule() {
+  const url = scheduleUrl.value.trim()
+  if (!url || scheduleLoading.value) return
+  if (!kb.currentId) {
+    antMessage.warning('请先创建或选择知识库')
+    return
+  }
+  scheduleLoading.value = true
+  try {
+    await api.createCrawlSchedule(kb.currentId, {
+      url,
+      frequency: scheduleFrequency.value,
+    })
+    antMessage.success('定时爬取任务已创建')
+    scheduleUrl.value = ''
+    await loadSchedules()
+  } catch (e) {
+    antMessage.error(`创建失败：${e.message}`)
+  } finally {
+    scheduleLoading.value = false
+  }
+}
+
+async function loadSchedules() {
+  if (!kb.currentId) return
+  try {
+    const res = await api.listCrawlSchedules(kb.currentId)
+    schedules.value = res.schedules || []
+  } catch (e) {
+    antMessage.error(`加载失败：${e.message}`)
+  }
+}
+
+async function deleteSchedule(scheduleId) {
+  try {
+    await api.deleteCrawlSchedule(kb.currentId, scheduleId)
+    antMessage.success('已删除')
+    await loadSchedules()
+  } catch (e) {
+    antMessage.error(`删除失败：${e.message}`)
+  }
+}
+
+// ---------- 增量爬取 ----------
+const incrementalUrl = ref('')
+const incrementalFetching = ref(false)
+const showIncremental = ref(false)
+
+async function submitIncrementalFetch() {
+  const url = incrementalUrl.value.trim()
+  if (!url || incrementalFetching.value) return
+  if (!kb.currentId) {
+    antMessage.warning('请先创建或选择知识库')
+    return
+  }
+  incrementalFetching.value = true
+  try {
+    const res = await api.incrementalFetch(kb.currentId, { url })
+    if (res.imported > 0) {
+      antMessage.success(`成功爬取 ${res.imported} 个页面${res.failed > 0 ? `，失败 ${res.failed} 个` : ''}`)
+      await kb.refreshDocs()
+    } else {
+      antMessage.error(`全部失败：${res.errors.join('；')}`)
+    }
+  } catch (e) {
+    antMessage.error(`爬取失败：${e.message}`)
+  } finally {
+    incrementalFetching.value = false
+  }
+}
+
 // ---------- 文档搜索过滤 ----------
 // ---------- 标签筛选 ----------
 const selectedTags = ref([])
@@ -737,6 +815,87 @@ function formatTime(s) {
                   @click="submitRecursiveFetch"
                 >
                   开始爬取
+                </a-button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 定时爬取 -->
+          <div class="schedule-section">
+            <div class="schedule-header">
+              <span class="schedule-title">定时爬取</span>
+              <a-button size="small" type="link" @click="showSchedule = !showSchedule">
+                {{ showSchedule ? '收起' : '展开' }}
+              </a-button>
+            </div>
+            <div v-if="showSchedule" class="schedule-body">
+              <div class="schedule-item">
+                <label class="schedule-label">URL</label>
+                <a-input
+                  v-model:value="scheduleUrl"
+                  placeholder="https://example.com"
+                  :disabled="scheduleLoading"
+                />
+              </div>
+              <div class="schedule-item">
+                <label class="schedule-label">频率</label>
+                <a-select
+                  v-model:value="scheduleFrequency"
+                  :options="[
+                    { value: 'hourly', label: '每小时' },
+                    { value: 'daily', label: '每天' },
+                    { value: 'weekly', label: '每周' },
+                  ]"
+                  :disabled="scheduleLoading"
+                />
+              </div>
+              <div class="schedule-actions">
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="scheduleLoading"
+                  :disabled="!scheduleUrl.trim()"
+                  @click="submitSchedule"
+                >
+                  创建任务
+                </a-button>
+              </div>
+              <div v-if="schedules.length" class="schedule-list">
+                <div v-for="s in schedules" :key="s.id" class="schedule-item-row">
+                  <span class="schedule-url">{{ s.url }}</span>
+                  <span class="schedule-freq">{{ s.frequency }}</span>
+                  <a-button size="small" type="text" @click="deleteSchedule(s.id)">删除</a-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 增量爬取 -->
+          <div class="incremental-section">
+            <div class="incremental-header">
+              <span class="incremental-title">增量爬取</span>
+              <a-button size="small" type="link" @click="showIncremental = !showIncremental">
+                {{ showIncremental ? '收起' : '展开' }}
+              </a-button>
+            </div>
+            <div v-if="showIncremental" class="incremental-body">
+              <div class="incremental-item">
+                <label class="incremental-label">URL</label>
+                <a-input
+                  v-model:value="incrementalUrl"
+                  placeholder="https://example.com"
+                  :disabled="incrementalFetching"
+                />
+              </div>
+              <div class="incremental-actions">
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="incrementalFetching"
+                  :disabled="!incrementalUrl.trim()"
+                  @click="submitIncrementalFetch"
+                >
+                  开始增量爬取
                 </a-button>
               </div>
             </div>
