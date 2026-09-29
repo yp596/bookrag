@@ -494,6 +494,57 @@ def batch_fetch_documents(kb_id: str, req: BatchFetchRequest) -> dict:
     }
 
 
+class RecursiveFetchRequest(BaseModel):
+    url: str
+    max_depth: int = Field(default=2, ge=1, le=5)
+    max_pages: int = Field(default=50, ge=1, le=200)
+    exclude_patterns: list[str] = Field(default_factory=list)
+
+
+@router.post("/{kb_id}/recursive-fetch")
+def recursive_fetch_documents(kb_id: str, req: RecursiveFetchRequest) -> dict:
+    """递归爬取网页及其链接并入库
+
+    支持配置爬取深度、最大页面数、排除路径。
+    """
+    if not storage.get_kb(kb_id):
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    from core.loader import recursive_fetch
+
+    imported = 0
+    failed = 0
+    errors = []
+    documents = []
+
+    try:
+        results = recursive_fetch(
+            url=req.url,
+            max_depth=req.max_depth,
+            max_pages=req.max_pages,
+        )
+
+        for url, title, text in results:
+            try:
+                filename = (title or urlparse(url).netloc).strip()[:64] or "网页"
+                doc, chunk_count = _store_text(kb_id, filename, text)
+                documents.append(doc)
+                imported += 1
+            except Exception as e:
+                failed += 1
+                errors.append(f"{url}: {e}")
+
+        return {
+            "ok": True,
+            "imported": imported,
+            "failed": failed,
+            "errors": errors,
+            "documents": documents,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"爬取失败：{e}") from e
+
+
 @router.post("/compare")
 def compare_documents(data: dict) -> dict:
     """文档对比：返回多个文档的内容

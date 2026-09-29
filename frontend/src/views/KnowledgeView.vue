@@ -36,6 +36,45 @@ const batchUrls = ref('')
 const batchFetching = ref(false)
 const showBatchUrl = ref(false)
 
+// ---------- 爬取配置 ----------
+const fetchConfigUrl = ref('')
+const fetchConfigDepth = ref(2)
+const fetchConfigMaxPages = ref(50)
+const fetchConfigExclude = ref('')
+const showFetchConfig = ref(false)
+const recursiveFetching = ref(false)
+
+async function submitRecursiveFetch() {
+  const url = fetchConfigUrl.value.trim()
+  if (!url || recursiveFetching.value) return
+  if (!kb.currentId) {
+    antMessage.warning('请先创建或选择知识库')
+    return
+  }
+  recursiveFetching.value = true
+  try {
+    const res = await api.recursiveFetch(kb.currentId, {
+      url,
+      max_depth: fetchConfigDepth.value,
+      max_pages: fetchConfigMaxPages.value,
+      exclude_patterns: fetchConfigExclude.value.split('\n').map(s => s.trim()).filter(Boolean),
+    })
+    if (res.imported > 0) {
+      antMessage.success(`成功爬取 ${res.imported} 个页面${res.failed > 0 ? `，失败 ${res.failed} 个` : ''}`)
+      await kb.refreshDocs()
+    } else {
+      antMessage.error(`全部失败：${res.errors.join('；')}`)
+    }
+    if (res.errors.length > 0 && res.imported > 0) {
+      antMessage.warning(`部分失败：${res.errors.join('；')}`)
+    }
+  } catch (e) {
+    antMessage.error(`爬取失败：${e.message}`)
+  } finally {
+    recursiveFetching.value = false
+  }
+}
+
 // ---------- 文档搜索过滤 ----------
 // ---------- 标签筛选 ----------
 const selectedTags = ref([])
@@ -651,6 +690,54 @@ function formatTime(s) {
                   批量抓取
                 </a-button>
                 <span class="muted">已输入 {{ batchUrls.split('\n').filter(u => u.trim()).length }} 个 URL</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 爬取配置 -->
+          <div class="fetch-config-section">
+            <div class="fetch-config-header">
+              <span class="fetch-config-title">爬取配置</span>
+              <a-button size="small" type="link" @click="showFetchConfig = !showFetchConfig">
+                {{ showFetchConfig ? '收起' : '展开' }}
+              </a-button>
+            </div>
+            <div v-if="showFetchConfig" class="fetch-config-body">
+              <div class="fetch-config-item">
+                <label class="fetch-config-label">起始 URL</label>
+                <a-input
+                  v-model:value="fetchConfigUrl"
+                  placeholder="https://example.com"
+                  :disabled="recursiveFetching"
+                />
+              </div>
+              <div class="fetch-config-item">
+                <label class="fetch-config-label">爬取深度：{{ fetchConfigDepth }}</label>
+                <a-slider v-model:value="fetchConfigDepth" :min="1" :max="5" :step="1" />
+              </div>
+              <div class="fetch-config-item">
+                <label class="fetch-config-label">最大页面数：{{ fetchConfigMaxPages }}</label>
+                <a-slider v-model:value="fetchConfigMaxPages" :min="10" :max="200" :step="10" />
+              </div>
+              <div class="fetch-config-item">
+                <label class="fetch-config-label">排除路径（每行一个）</label>
+                <a-textarea
+                  v-model:value="fetchConfigExclude"
+                  placeholder="/admin&#10;/login&#10;/api"
+                  :rows="3"
+                  :disabled="recursiveFetching"
+                />
+              </div>
+              <div class="fetch-config-actions">
+                <a-button
+                  type="primary"
+                  size="small"
+                  :loading="recursiveFetching"
+                  :disabled="!fetchConfigUrl.trim()"
+                  @click="submitRecursiveFetch"
+                >
+                  开始爬取
+                </a-button>
               </div>
             </div>
           </div>

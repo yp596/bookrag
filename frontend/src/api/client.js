@@ -89,6 +89,7 @@ export const api = {
   exportChat: (kbId, sessionId) => http.get(`/chat/export/${sessionId}`, { params: { kb_id: kbId } }),
   chatRecommend: (payload) => http.post('/chat/recommend', payload),
   messageFeedback: (msgId, type) => http.post(`/chat/feedback/${msgId}`, { type }),
+  recursiveFetch: (kbId, payload) => http.post(`/kb/${kbId}/recursive-fetch`, payload),
 }
 
 // ====================== SSE 解析 ======================
