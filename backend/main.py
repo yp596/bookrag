@@ -21,6 +21,7 @@ from fastapi import FastAPI                                    # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware             # noqa: E402
 
 from api import chat as chat_api                               # noqa: E402
+from api import graph as graph_api                              # noqa: E402
 from api import kb as kb_api                                   # noqa: E402
 from api import settings as settings_api                       # noqa: E402
 from api.deps import kb_manager, settings_store, storage       # noqa: E402
@@ -60,6 +61,7 @@ app.add_middleware(
 )
 
 app.include_router(kb_api.router)
+app.include_router(graph_api.router)
 app.include_router(chat_api.router)
 app.include_router(settings_api.router)
 

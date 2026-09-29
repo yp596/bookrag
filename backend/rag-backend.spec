@@ -17,6 +17,8 @@ datas = collect_data_files("jieba")
 
 # core/embedder.py 里的 fastembed 是函数内延迟导入，静态分析看不到，
 # 依赖链上的包必须显式声明，否则打包后 import 失败、向量检索静默失效。
+# 同理 core/loader.py 里 pdfplumber 也是函数内延迟导入，不声明则打包版
+# PDF 表格被静默跳过（仅打一条 stderr 日志），退化成纯 pypdf。
 hiddenimports = [
     "fastembed",
     "onnxruntime",
@@ -26,6 +28,16 @@ hiddenimports = [
     "loguru",
     "mmh3",
     "PIL",
+    "pdfplumber",
+    "pdfminer",
+    "pypdfium2",
+    "pptx",
+    "openpyxl",
+    "et_xmlfile",
+    "flashrank",
+    "ranker",
+    "olefile",
+    "xlrd",
 ]
 
 # 以下模块在应用代码中零 import，静态分析本就不会收集。

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 工作流程 · RAG 离线知识库</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1923;
+    color: #e8e8e8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+  .banner {
+    width: 1200px;
+    background: linear-gradient(135deg, #1a2332 0%, #0d1520 100%);
+    border-radius: 24px;
+    padding: 48px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .banner-title {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 40px;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+  .section-label {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    padding-left: 12px;
+    border-left: 3px solid;
+  }
+  .section-label.blue { color: #60a5fa; border-color: #60a5fa; }
+  .section-label.orange { color: #fb923c; border-color: #fb923c; }
+
+  /* 通用层 */
+  .workflow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 12px;
+  }
+  .workflow-step {
+    flex: 1;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    position: relative;
+  }
+  .workflow-step .step-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  .workflow-step .step-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #60a5fa;
+    margin-bottom: 8px;
+  }
+  .workflow-step .step-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.6;
+  }
+  .workflow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    color: #60a5fa;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  /* 连接箭头 */
+  .connector {
+    text-align: center;
+    padding: 16px 0;
+    color: #64748b;
+    font-size: 24px;
+  }
+
+  /* RAG 实例层 */
+  .rag-pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .rag-stage {
+    background: rgba(251, 146, 60, 0.06);
+    border: 1px solid rgba(251, 146, 60, 0.15);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .rag-stage-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fb923c;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rag-flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .rag-node {
+    background: rgba(251, 146, 60, 0.12);
+    border: 1px solid rgba(251, 146, 60, 0.25);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: #fdba74;
+    white-space: nowrap;
+  }
+  .rag-node.highlight {
+    background: rgba(251, 146, 60, 0.2);
+    border-color: rgba(251, 146, 60, 0.4);
+    color: #fed7aa;
+    font-weight: 600;
+  }
+  .rag-arrow {
+    color: #fb923c;
+    font-size: 14px;
+    opacity: 0.6;
+  }
+
+  /* 评估层 */
+  .eval-row {
+    display: flex;
+    gap: 12px;
+  }
+  .eval-card {
+    flex: 1;
+    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    border-radius: 12px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .eval-card .eval-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #34d399;
+    margin-bottom: 6px;
+  }
+  .eval-card .eval-desc {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+</style>
+</head>
+<body>
+<div class="banner">
+  <div class="banner-title">AI 工作流程 · RAG 离线知识库</div>
+
+  <!-- 通用层 -->
+  <div class="section-label blue">通用层 · AI 工作流程</div>
+  <div class="workflow-row">
+    <div class="workflow-step">
+      <div class="step-icon">📋</div>
+      <div class="step-title">规划任务</div>
+      <div class="step-desc">理解需求<br>分解步骤<br>制定计划</div>
+    </div>
+    <div class="workflow-arrow">──▶</div>
+    <div class="workflow-step">
+      <div class="step-icon">🔧</div>
+      <div class="step-title">调用工具</div>
+      <div class="step-desc">执行操作<br>调用 API<br>读写数据</div>
+    </div>
+    <div class="workflow-arrow">──▶</div>
+    <div class="workflow-step">
+      <div class="step-icon">🔍</div>
+      <div class="step-title">检索资料</div>
+      <div class="step-desc">获取信息<br>搜索文件<br>查询数据库</div>
+    </div>
+    <div class="workflow-arrow">──▶</div>
+    <div class="workflow-step">
+      <div class="step-icon">✅</div>
+      <div class="step-title">验证测试</div>
+      <div class="step-desc">检查正确性<br>测试验证<br>修复错误</div>
+    </div>
+    <div class="workflow-arrow">──▶</div>
+    <div class="workflow-step">
+      <div class="step-icon">📦</div>
+      <div class="step-title">交付成果</div>
+      <div class="step-desc">输出结果<br>展示报告<br>归档记录</div>
+    </div>
+  </div>
+
+  <div class="connector">▼</div>
+
+  <!-- RAG 实例层 -->
+  <div class="section-label orange">实例层 · RAG 离线知识库 — 检索资料环节的具体实现</div>
+  <div class="rag-pipeline">
+    <div class="rag-stage">
+      <div class="rag-stage-title">📥 离线索引（前置准备）</div>
+      <div class="rag-flow">
+        <div class="rag-node">PDF/Word/URL</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node">文档解析</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node">智能分块</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node highlight">bge-small 向量化</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node">Chroma 存储</div>
+      </div>
+    </div>
+
+    <div class="rag-stage">
+      <div class="rag-stage-title">🔎 在线查询（核心链路）</div>
+      <div class="rag-flow">
+        <div class="rag-node">查询改写</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node highlight">BM25 + 向量混合检索</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node">RRF 融合</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node">加权精排</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node highlight">LLM 生成</div>
+        <span class="rag-arrow">──▶</span>
+        <div class="rag-node">引用溯源</div>
+      </div>
+    </div>
+
+    <div class="rag-stage">
+      <div class="rag-stage-title">📊 评估运维（持续优化）</div>
+      <div class="eval-row">
+        <div class="eval-card">
+          <div class="eval-title">效果评估</div>
+          <div class="eval-desc">召回率 · 准确率 · MRR</div>
+        </div>
+        <div class="eval-card">
+          <div class="eval-title">知识库管理</div>
+          <div class="eval-desc">文档增删 · 版本管理 · 索引重建</div>
+        </div>
+        <div class="eval-card">
+          <div class="eval-title">用户反馈</div>
+          <div class="eval-desc">点赞/点踩 · 对话回流 · 持续优化</div>
+        </div>
+        <div class="eval-card">
+          <div class="eval-title">监控告警</div>
+          <div class="eval-desc">延迟监控 · 命中率 · 异常告警</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

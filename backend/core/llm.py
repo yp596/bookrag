@@ -123,3 +123,150 @@ class LLMClient:
             return False, "服务无响应内容"
         except Exception as e:
             return False, str(self._handle_error(e))
+
+    def rewrite_query(self, query: str, history: list[dict] | None = None) -> str:
+        """查询改写：用 LLM 将用户查询改写成更适合检索的形式
+
+        目的：提升召回率。用户提问往往口语化、上下文依赖强，
+        直接用于 BM25 和向量检索效果差。改写后的查询更精确、
+        更适合检索。
+
+        Args:
+            query: 用户原始查询
+            history: 对话历史，用于上下文感知的改写
+
+        Returns:
+            改写后的查询
+        """
+        system_prompt = (
+            "你是查询改写助手。任务是将用户查询改写成更适合检索的形式。\n"
+            "规则：\n"
+            "1. 保留原意，不改变查询意图；\n"
+            "2. 去除口语化表达，改为精确关键词；\n"
+            "3. 结合对话历史补充上下文（如代词指代）；\n"
+            "4. 只输出改写后的查询，不输出其他内容。"
+        )
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history[-4:])  # 只取最近 4 轮，避免上下文过长
+        messages.append({"role": "user", "content": query})
+
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.0,
+                max_tokens=100,
+            )
+            rewritten = (resp.choices[0].message.content or "").strip()
+            return rewritten if rewritten else query
+        except Exception:
+            return query  # 改写失败时回退到原始查询
+
+    def generate_hypothesis(self, query: str) -> str:
+        """HyDE 假设文档：让 LLM 先生成假设答案，用答案检索
+
+        目的：假设答案通常比原始查询更详细、更精确，能提升召回率。
+        原理：用户提问往往简短、口语化，而文档中的答案通常更详细、
+        更正式。用假设答案作为查询，更容易匹配到文档中的相关内容。
+
+        Args:
+            query: 用户原始查询
+
+        Returns:
+            假设答案
+        """
+        system_prompt = (
+            "你是知识库助手。任务是根据用户查询生成一个假设答案。\n"
+            "规则：\n"
+            "1. 假设答案应该详细、正式，与文档风格一致；\n"
+            "2. 不要编造不存在的信息，只生成合理的假设；\n"
+            "3. 只输出假设答案，不输出其他内容。"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query},
+        ]
+
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.0,
+                max_tokens=500,
+            )
+            hypothesis = (resp.choices[0].message.content or "").strip()
+            return hypothesis if hypothesis else query
+        except Exception:
+            return query  # 生成失败时回退到原始查询
+
+    def split_queries(self, query: str) -> list[str]:
+        """多查询检索：将一个问题拆成多个子查询
+
+        目的：一个问题可能涉及多个方面，拆分成多个子查询可以
+        覆盖更多相关内容，提升召回率。
+
+        Args:
+            query: 用户原始查询
+
+        Returns:
+            子查询列表
+        """
+        system_prompt = (
+            "你是查询拆分助手。任务是将用户查询拆分成多个子查询。\n"
+            "规则：\n"
+            "1. 每个子查询应该覆盖原查询的一个方面；\n"
+            "2. 子查询之间应该有区分度，避免重复；\n"
+            "3. 只输出子查询列表，每行一个，不输出其他内容。"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query},
+        ]
+
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.0,
+                max_tokens=200,
+            )
+            content = (resp.choices[0].message.content or "").strip()
+            # 按行分割，过滤空行
+            queries = [q.strip() for q in content.split("\n") if q.strip()]
+            return queries if queries else [query]
+        except Exception:
+            return [query]  # 拆分失败时回退到原始查询
+
+    def select_model(self, query: str) -> str:
+        """模型自动切换：根据问题类型自动选择本地/云端模型
+
+        策略：
+        - 简单问题（事实查询、定义查询）→ 本地模型（快速、低成本）
+        - 复杂问题（推理、创作、多步骤）→ 云端模型（质量更高）
+
+        Args:
+            query: 用户查询
+
+        Returns:
+            选中的模型名称
+        """
+        # 简单问题关键词
+        simple_keywords = ["什么", "哪个", "谁", "何时", "哪里", "多少", "定义", "介绍"]
+        # 复杂问题关键词
+        complex_keywords = ["为什么", "如何", "分析", "比较", "设计", "实现", "优化", "推理"]
+
+        query_lower = query.lower()
+
+        # 检查复杂问题关键词
+        for kw in complex_keywords:
+            if kw in query_lower:
+                return "cloud"
+
+        # 检查简单问题关键词
+        for kw in simple_keywords:
+            if kw in query_lower:
+                return "local"
+
+        # 默认使用本地模型
+        return "local"

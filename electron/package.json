@@ -39,6 +39,10 @@
       {
         "from": "../backend/models",
         "to": "backend/models"
+      },
+      {
+        "from": "../llama-pkg",
+        "to": "llama"
       }
     ],
     "asar": true,

@@ -6,7 +6,7 @@
 
 ## 功能
 
-- 导入 TXT / Markdown / PDF / Word 文档，自动按小节切分成片段
+- 导入 TXT / Markdown / PDF / Word / PPT / Excel 文档，自动按小节切分成片段
 - 中文混合检索（jieba + BM25 关键词 · bge-small-zh 向量语义 · RRF 融合），答案附带引用片段，可展开查看原文
 - 流式输出，逐字返回
 - 多知识库隔离，各自独立索引
@@ -24,6 +24,17 @@ Electron 主进程
 ```
 
 前端直接向 Python 后端发 HTTP/SSE 请求；Electron 主进程只负责拉起后端进程、分配空闲端口、退出时回收。
+
+## 工作流程
+
+![RAG 工作流程](doc/rag-workflow-banner.html)
+
+**通用层**：规划任务 → 调用工具 → 检索资料 → 验证测试 → 交付成果
+
+**实例层**：RAG 离线知识库
+- 离线索引：文档解析 → 智能分块 → bge-small 向量化 → Chroma 存储
+- 在线查询：查询改写 → BM25+向量混合检索 → RRF 融合 → 加权精排 → LLM 生成 → 引用溯源
+- 评估运维：效果评估 → 知识库管理 → 用户反馈 → 监控告警
 
 ## 目录结构
 
@@ -166,15 +177,15 @@ npm run build     # 生成 NSIS 安装包
 | 安装包 / 免安装版 | `%APPDATA%/rag-desktop/data/` |
 | 由 Electron 拉起 | 主进程经 `RAG_DATA_DIR` 指定 |
 
-存放 `rag.db`（知识库元数据与切片）与 `settings.json`（模型配置）。
+存放 `rag.db`（知识库元数据、切片与按会话隔离的对话历史）与 `settings.json`（模型配置）。
 
-> `settings.json` 中的云端 API Key 为明文存储，仅适合在本机使用。
+> `settings.json` 中的云端 API Key 经本机 DPAPI 加密存储（非 Windows 回退明文），仅适合在本机使用。
 
 ## 当前限制
 
-- 文档支持 TXT / Markdown / PDF / Word，暂不支持图片、表格与扫描件的结构化解析。
-- 本地小模型（1B 级）适合文档抽取式问答，复杂推理能力有限。
-- 检索未接 Rerank，长文档下排序精度仍有提升空间。
+- 文档支持 TXT / Markdown / PDF / Word / PPT / Excel（含旧版 .doc/.xls/.ppt 文本抽取）/ 图片 OCR（需 `rapidocr_onnxruntime`，扫描型 PDF 自动回退 OCR），以及网页链接抓取（标准库提取正文，JS 渲染站已接 `playwright` 可选渲染，登录墙除外）；PDF、Word、PPT 中的表格与 Excel 工作表自动转 Markdown 参与检索。
+- 本地小模型（1B 级）适合文档抽取式问答，复杂推理能力有限。桌面端若随包带 `llama/` 目录会自动拉起 `llama-server`，状态见 `GET /api/settings/local-model`。
+- 检索为双路粗排（BM25 ＋ 向量 ＋ RRF）加权精排，另有 CrossEncoder 可选第二阶段（`flashrank` ONNX，默认关闭，设置页 `cross_rerank_enabled` 开启）。知识图谱为轻量关键词共现（`GET /api/kb/{id}/graph`），任务面板见 `/api/kb/{id}/tasks`。
 
 ## 许可
 

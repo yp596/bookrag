@@ -14,9 +14,9 @@ function toggle(i) {
   expanded.value = next
 }
 
-/** 相关度归一化成 0-100 的直观百分比 */
+/** 相关度归一化成 0-100 的直观百分比（score 范围 0-1） */
 function relevance(score) {
-  return Math.min(100, Math.round((score / 4) * 100))
+  return Math.min(100, Math.round(score * 100))
 }
 </script>
 
@@ -52,9 +52,10 @@ function relevance(score) {
 .sources {
   margin-top: 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
 }
 
 .head {

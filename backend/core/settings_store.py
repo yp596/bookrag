@@ -12,15 +12,43 @@
 
 安全提示：API Key 以明文存于本地文件，仅适用于单机自用场景。
 对外分发时需要改为系统凭据库或加密存储。
+
+切片参数仅对保存之后导入的文档生效，已入库的切片不会重切。
 """
 
 import json
 from pathlib import Path
 
-from core.config import LLM_PROFILES, SETTINGS_PATH, TOP_K
+from core.config import (
+    CHUNK_OVERLAP,
+    LLM_PROFILES,
+    MAX_CHUNK_SIZE,
+    SETTINGS_PATH,
+    TOP_K,
+)
 
 # 允许持久化的字段，避免前端写入无关内容
-_ALLOWED_KEYS = {"llm_mode", "local", "cloud", "top_k"}
+_ALLOWED_KEYS = {"llm_mode", "local", "cloud", "top_k", "chunk_size", "chunk_overlap",
+                 "cross_rerank_enabled"}
+
+# 切片参数的可调范围：过小则语义碎片化，过大则单片混入多主题
+CHUNK_SIZE_MIN, CHUNK_SIZE_MAX = 200, 2000
+CHUNK_OVERLAP_MAX = 500
+
+
+def _clamp_chunk(data: dict) -> dict:
+    """钳制切片参数并保证 overlap < size。
+
+    overlap >= size 会让二次切分的步进归零、陷入死循环，
+    因此钳制是正确性要求，不只是体验优化。
+    """
+    size = int(data.get("chunk_size", MAX_CHUNK_SIZE))
+    size = min(max(size, CHUNK_SIZE_MIN), CHUNK_SIZE_MAX)
+    overlap = int(data.get("chunk_overlap", CHUNK_OVERLAP))
+    overlap = min(max(overlap, 0), CHUNK_OVERLAP_MAX, size - 1)
+    data["chunk_size"] = size
+    data["chunk_overlap"] = overlap
+    return data
 
 
 def _defaults() -> dict:
@@ -37,6 +65,8 @@ def _defaults() -> dict:
             "model": LLM_PROFILES["cloud"]["model"],
         },
         "top_k": TOP_K,
+        "chunk_size": MAX_CHUNK_SIZE,
+        "chunk_overlap": CHUNK_OVERLAP,
     }
 
 
@@ -63,7 +93,16 @@ class SettingsStore:
                     data[key].update(value)
                 else:
                     data[key] = value
-        return data
+        # cloud.api_key 落库为 ENC(...) 时自动解密，前端拿到的永远是可用明文
+        try:
+            from core.secret import decrypt_key
+
+            cloud = data.get("cloud") or {}
+            if cloud.get("api_key"):
+                cloud["api_key"] = decrypt_key(cloud["api_key"])
+        except Exception:
+            pass
+        return _clamp_chunk(data)
 
     def save(self, payload: dict) -> dict:
         """保存配置，仅接受白名单字段"""
@@ -75,8 +114,19 @@ class SettingsStore:
                 data[key].update(value)
             else:
                 data[key] = value
+        data = _clamp_chunk(data)
+        # 落库前加密 api_key（Windows DPAPI），返回给前端的仍是明文
+        to_write = json.loads(json.dumps(data, ensure_ascii=False))
+        try:
+            from core.secret import encrypt_key
+
+            cloud = to_write.get("cloud") or {}
+            if cloud.get("api_key"):
+                cloud["api_key"] = encrypt_key(cloud["api_key"])
+        except Exception:
+            pass
         self.path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(to_write, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return data
 

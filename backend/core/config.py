@@ -51,6 +51,7 @@ DB_PATH = DATA_DIR / "rag.db"                          # 知识库元数据与�
 SETTINGS_PATH = DATA_DIR / "settings.json"             # 模型配置
 CHROMA_DIR = DATA_DIR / "chroma_db"                    # 向量库（待接入）
 BM25_DIR = DATA_DIR / "bm25_index"
+VECTOR_DIR = DATA_DIR / "vector_cache"                 # 各库向量矩阵（kb_id.npz）
 
 # ====================== 文档切片 ======================
 MAX_CHUNK_SIZE = 800          # 单个切片字符上限，超出则按窗口二次切分
@@ -72,13 +73,41 @@ MIN_TERM_COVERAGE = 0.5       # 查询词覆盖率下限，解决"只命中一�
 VECTOR_MIN_SIMILARITY = 0.45  # 相对阈值：低于最高分该比例的向量结果丢弃
 VECTOR_MIN_SCORE = 0.55       # 绝对下限：低于此相似度视为无关，直接丢弃
 
+# 向量量化：float32 → int8，内存降 75%。
+# 归一化后各维度值域 [-1, 1]，int8 量化精度足够（误差 < 0.4%）。
+VECTOR_QUANTIZE = True
+
 # RRF（倒数排序融合）常数。值越大，靠前名次的优势越平缓。
 # 60 是原论文与工业界常用取值，对名次差异不敏感、抗单路噪声。
 RRF_K = 60
 
+# ====================== 精排 Rerank ======================
+# RRF 只看名次不看分数：BM25 第一名 10 分、第二名 2 分（5 倍差距），
+# 与向量第一 0.75、第二 0.70（几乎打平），在 RRF 里被抹成同样的名次差。
+# 长文档下同词复现多、各路分差悬殊时排序不稳，因此粗排（RRF 取候选）
+# 之后再用三路原始信号的加权做一次精排，取回分数强弱的信息。
+# 零新依赖、零模型下载：权重是经验值，类型一变可能要调，故做成配置项。
+RERANK_ENABLED = True        # 精排总开关，关闭则回退到纯 RRF 截断
+RERANK_W_BM25 = 0.4          # BM25 归一化分权重（词面精确性）
+RERANK_W_VECTOR = 0.4        # 向量相似度权重（语义接近性）
+RERANK_W_COVERAGE = 0.2      # 查询词覆盖率权重（三者之和为 1）
+RERANK_PHRASE_BONUS = 0.15   # 查询原短语在片段中逐字出现时的额外加分
+
+# CrossEncoder 真重排（可选第二阶段，默认关闭保轻量）：
+# 加权精排之后再用【问题+片段】成对模型打分，对反义/长难句更准。
+# 失败一律回退加权精排，绝不影响主链路。
+CROSS_RERANK_ENABLED = False  # 总开关，开启后才尝试加载模型
+CROSS_RERANK_MODEL = "ms-marco-TinyBERT-L-2-v2"  # 约 40MB ONNX，存 MODELS_DIR/rerank
+
 # ====================== 文本向量化 ======================
 EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"    # 中文 ONNX 嵌入模型（需预下载）
 EMBEDDING_CACHE_DIR = str(MODELS_DIR)
+
+# ====================== 对话历史 ======================
+# 历史只做展示层持久化（重启后记录还在），不送回模型做多轮：
+# 本地 1B 小模型的指令遵循本就吃紧，多轮上下文只会放大编造 drift。
+HISTORY_MAX_PER_KB = 200    # 单会话最多保留的消息条数，超限按时间裁掉最旧的
+HISTORY_FETCH_DEFAULT = 100  # 前端拉取的默认轮次
 
 # ====================== LLM ======================
 # 本地与云端均使用 OpenAI 兼容协议，切换时只需改这三项

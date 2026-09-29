@@ -23,6 +23,26 @@ rank-bm25
 # ============ 文档解析 ============
 pypdf
 python-docx
+# PDF 表格转 Markdown。纯 Python + 预编译轮子，不引入 torch，
+# 体积与 ONNX 轻量路线兼容（重型 OCR 另议，不在此处加）
+pdfplumber
+# Office 文档：均为纯 Python 库，不引入 torch
+python-pptx
+openpyxl
+# 旧版 Office（OLE2 纯 Python，体积可忽略）
+olefile
+xlrd
+
+# ============ OCR 与 JS 渲染（可选，未安装时自动降级） ============
+# rapidocr_onnxruntime（ONNX，与现有 onnxruntime 共存，约 20MB 模型）
+# playwright（仅 JS 渲染站需要，需另执行 playwright install chromium）
+# rapidocr_onnxruntime
+# playwright
+
+# ============ CrossEncoder 真重排（可选，需手动开启） ============
+# ONNX 轻量路线（约 40MB），默认不启用；开启后才下载模型。
+# 不放在 torch 路线内，与现有 onnxruntime 共存。
+flashrank
 
 # ============ LLM 客户端 ============
 # core/llm.py 直接依赖，原先靠 langchain-openai 间接带入，

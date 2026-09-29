@@ -26,6 +26,24 @@ export const useKbStore = defineStore('kb', () => {
     }
   }
 
+  /** 并行刷新知识库列表 + 文档列表（替代 refresh() + refreshDocs() 两次串行请求） */
+  async function refreshAll() {
+    loading.value = true
+    try {
+      const [{ items }, { items: docItems }] = await Promise.all([
+        api.listKbs(),
+        currentId.value ? api.listDocs(currentId.value) : Promise.resolve({ items: [] }),
+      ])
+      list.value = items
+      docs.value = docItems
+      if (!list.value.some((k) => k.id === currentId.value)) {
+        select(list.value[0]?.id || '')
+      }
+    } finally {
+      loading.value = false
+    }
+  }
+
   function select(kbId) {
     currentId.value = kbId
     localStorage.setItem(CURRENT_KEY, kbId)
@@ -56,19 +74,30 @@ export const useKbStore = defineStore('kb', () => {
 
   async function removeDoc(docId) {
     await api.deleteDoc(currentId.value, docId)
-    await refresh()
-    await refreshDocs()
+    await refreshAll()
+  }
+
+  async function clearDocs() {
+    const res = await api.clearDocs(currentId.value)
+    await refreshAll()
+    return res
   }
 
   async function upload(file, onProgress) {
     const res = await api.uploadDoc(currentId.value, file, onProgress)
-    await refresh()
-    await refreshDocs()
+    await refreshAll()
+    return res
+  }
+
+  /** 抓取网页正文入库（与 upload 同样的刷新语义） */
+  async function fetchUrl(url) {
+    const res = await api.fetchUrl(currentId.value, url)
+    await refreshAll()
     return res
   }
 
   return {
     list, currentId, docs, loading, current,
-    refresh, select, refreshDocs, create, remove, removeDoc, upload,
+    refresh, refreshAll, select, refreshDocs, create, remove, removeDoc, clearDocs, upload, fetchUrl,
   }
 })

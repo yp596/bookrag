@@ -17,6 +17,9 @@ class SettingsPayload(BaseModel):
     local: dict | None = None
     cloud: dict | None = None
     top_k: int | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    cross_rerank_enabled: bool | None = None
 
 
 @router.get("")
@@ -44,3 +47,34 @@ def test_connection() -> dict:
     )
     ok, message = client.test_connection()
     return {"ok": ok, "message": message, "mode": profile["mode"], "model": profile["model"]}
+
+
+@router.get("/local-model")
+def local_model_status() -> dict:
+    """本地模型 sidecar 状态：二进制与权重是否存在、服务是否存活"""
+    from core.local_model import check_health, status
+
+    info = status()
+    info["serving"] = check_health()
+    return info
+
+
+class DirectTestPayload(BaseModel):
+    """临时测试：通过密钥和链接直接获取大模型"""
+
+    api_key: str
+    base_url: str
+    model: str
+
+
+@router.post("/test-direct")
+def test_direct(payload: DirectTestPayload) -> dict:
+    """临时测试：不保存配置，直接用用户传入的参数测试 LLM 连通性"""
+    client = LLMClient(
+        mode="cloud",
+        base_url=payload.base_url,
+        api_key=payload.api_key,
+        model=payload.model,
+    )
+    ok, message = client.test_connection()
+    return {"ok": ok, "message": message, "model": payload.model}

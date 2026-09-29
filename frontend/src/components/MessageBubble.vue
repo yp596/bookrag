@@ -1,27 +1,42 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { message as antMessage } from 'ant-design-vue'
-import { CopyOutlined, CheckOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { CopyOutlined, CheckOutlined, WarningOutlined, EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
 import SourceCard from './SourceCard.vue'
 import { renderMarkdown } from '../utils/markdown'
+import { useClipboard } from '../composables/useClipboard'
 
 const props = defineProps({
   message: { type: Object, required: true },
 })
 
+const emit = defineEmits(['edit', 'regenerate'])
+
 const isUser = computed(() => props.message.role === 'user')
 const html = computed(() => (isUser.value ? '' : renderMarkdown(props.message.text)))
-const copied = ref(false)
+const { copied, copy } = useClipboard()
 
-async function copy() {
-  try {
-    await navigator.clipboard.writeText(props.message.text)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    antMessage.error('复制失败')
-  }
+// ---------- 消息编辑 ----------
+const editing = ref(false)
+const editText = ref('')
+
+function startEdit() {
+  editText.value = props.message.text
+  editing.value = true
 }
+
+function saveEdit() {
+  editing.value = false
+  emit('edit', { id: props.message.id, text: editText.value })
+}
+
+function cancelEdit() {
+  editing.value = false
+}
+
+function regenerate() {
+  emit('regenerate', props.message.id)
+}
+
 </script>
 
 <template>
@@ -31,7 +46,23 @@ async function copy() {
     <div class="stack">
       <div class="bubble" :class="isUser ? 'user' : 'ai'">
         <!-- 用户消息原样显示；助手消息渲染 Markdown -->
-        <template v-if="isUser">{{ message.text }}</template>
+        <template v-if="isUser && !editing">{{ message.text }}</template>
+        <template v-else-if="isUser && editing">
+          <textarea
+            v-model="editText"
+            class="edit-input"
+            rows="3"
+            @keydown.esc="cancelEdit"
+          />
+          <div class="edit-actions">
+            <button class="edit-btn save" @click="saveEdit">
+              <SaveOutlined /> 保存
+            </button>
+            <button class="edit-btn cancel" @click="cancelEdit">
+              <CloseOutlined /> 取消
+            </button>
+          </div>
+        </template>
         <template v-else>
           <div v-if="message.text" class="md-body" v-html="html" />
           <span v-if="message.streaming" class="cursor" />
@@ -52,7 +83,17 @@ async function copy() {
           <component :is="copied ? CheckOutlined : CopyOutlined" />
           {{ copied ? '已复制' : '复制' }}
         </button>
+        <button class="act" @click="regenerate" title="重新生成">
+          <ReloadOutlined />
+        </button>
         <span v-if="message.stopped" class="muted">已中断</span>
+      </div>
+
+      <div v-if="isUser && !message.streaming" class="actions">
+        <button class="act" @click="startEdit">
+          <EditOutlined />
+          编辑
+        </button>
       </div>
     </div>
 
@@ -64,7 +105,7 @@ async function copy() {
 .row {
   display: flex;
   gap: 10px;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
   align-items: flex-start;
 }
 .row.right {
@@ -77,7 +118,7 @@ async function copy() {
   height: 30px;
   flex-shrink: 0;
   margin-top: 2px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
   display: flex;
@@ -85,8 +126,9 @@ async function copy() {
   justify-content: center;
 }
 .avatar.ai {
-  background: linear-gradient(135deg, var(--accent), #7b8cff);
-  color: #fff;
+  background: linear-gradient(135deg, var(--accent), #fbbf24);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
 }
 .avatar.me {
   background: var(--bg-hover);
@@ -103,7 +145,7 @@ async function copy() {
 
 .bubble {
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 14px;
   line-height: 1.75;
   word-break: break-word;
@@ -113,6 +155,7 @@ async function copy() {
   background: var(--bubble-user);
   color: var(--bubble-user-text);
   border-bottom-right-radius: 4px;
+  box-shadow: 0 2px 12px rgba(249, 115, 22, 0.2);
 }
 .bubble.ai {
   background: var(--bubble-ai);
@@ -153,10 +196,11 @@ async function copy() {
   gap: 6px;
   margin-top: 8px;
   padding: 7px 10px;
-  border-radius: 7px;
+  border-radius: 8px;
   background: rgba(245, 63, 63, 0.08);
   color: #f53f3f;
   font-size: 12.5px;
+  border: 1px solid rgba(245, 63, 63, 0.15);
 }
 
 .actions {
@@ -173,7 +217,7 @@ async function copy() {
   gap: 5px;
   padding: 3px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-3);
   font-family: inherit;
@@ -184,5 +228,53 @@ async function copy() {
 .act:hover {
   background: var(--bg-hover);
   color: var(--text-1);
+}
+
+/* ---------- 消息编辑 ---------- */
+.edit-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-app);
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+}
+.edit-input:focus {
+  border-color: var(--accent);
+}
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.edit-btn.save {
+  background: var(--accent);
+  color: #ffffff;
+}
+.edit-btn.save:hover {
+  opacity: 0.9;
+}
+.edit-btn.cancel {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+.edit-btn.cancel:hover {
+  background: var(--border);
 }
 </style>

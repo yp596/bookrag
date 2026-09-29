@@ -1,59 +1,63 @@
 /* ============================================================
-   全局样式与主题变量
-   颜色统一走 CSS 变量，Ant Design Vue 通过 ConfigProvider 切换算法，
-   两者在 App.vue 中由同一个 theme 状态驱动。
+   全局样式与主题变量 — 暖色高级
+   米色背景 + 白色面板 + 橙色强调色 + 圆角卡片
    ============================================================ */
 
 :root {
-  --bg-app: #f4f5f7;
+  --bg-app: #faf9f7;
   --bg-panel: #ffffff;
-  --bg-sider: #fbfbfd;
-  --bg-hover: #f0f1f4;
-  --bg-code: #f6f7f9;
+  --bg-sider: #f5f4f2;
+  --bg-hover: #f0efed;
+  --bg-code: #f7f6f4;
 
-  --border: #e6e8ec;
-  --border-strong: #d8dbe1;
+  --border: #e8e6e3;
+  --border-strong: #d4d2cf;
 
-  --text-1: #1d2129;
-  --text-2: #4e5969;
-  --text-3: #86909c;
+  --text-1: #1a1a1a;
+  --text-2: #4a4a4a;
+  --text-3: #8a8a8a;
 
-  --accent: #4f6ef7;
-  --accent-soft: rgba(79, 110, 247, 0.1);
+  --accent: #f97316;
+  --accent-soft: rgba(249, 115, 22, 0.1);
   --accent-text: #ffffff;
 
-  --bubble-user: #4f6ef7;
+  --bubble-user: linear-gradient(135deg, #f97316, #ea580c);
   --bubble-user-text: #ffffff;
   --bubble-ai: #ffffff;
 
-  --shadow-sm: 0 1px 2px rgba(20, 25, 40, 0.06);
-  --shadow-md: 0 4px 16px rgba(20, 25, 40, 0.08);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-glow: 0 4px 20px rgba(249, 115, 22, 0.15);
+
+  --glass-blur: blur(12px);
+  --glass-border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 [data-theme='dark'] {
-  --bg-app: #131519;
-  --bg-panel: #1b1e24;
-  --bg-sider: #171a1f;
-  --bg-hover: #24282f;
-  --bg-code: #23272e;
+  --bg-app: #1a1a1a;
+  --bg-panel: #242424;
+  --bg-sider: #202020;
+  --bg-hover: #2a2a2a;
+  --bg-code: #282828;
 
-  --border: #2a2e36;
-  --border-strong: #363b45;
+  --border: #333333;
+  --border-strong: #444444;
 
-  --text-1: #e8eaed;
-  --text-2: #b0b6c0;
-  --text-3: #767d89;
+  --text-1: #e8e8e8;
+  --text-2: #b0b0b0;
+  --text-3: #707070;
 
-  --accent: #6b86ff;
-  --accent-soft: rgba(107, 134, 255, 0.16);
+  --accent: #f97316;
+  --accent-soft: rgba(249, 115, 22, 0.15);
   --accent-text: #ffffff;
 
-  --bubble-user: #3d55c9;
-  --bubble-user-text: #f2f4ff;
-  --bubble-ai: #21252c;
+  --bubble-user: linear-gradient(135deg, #f97316, #ea580c);
+  --bubble-user-text: #ffffff;
+  --bubble-ai: #2a2a2a;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 4px 20px rgba(249, 115, 22, 0.2);
 }
 
 * {
@@ -65,27 +69,28 @@ body,
 #app {
   height: 100%;
   margin: 0;
+  padding: 0;
 }
 
 body {
-  background: var(--bg-app);
-  color: var(--text-1);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Microsoft YaHei', 'Hiragino Sans GB', sans-serif;
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-1);
+  background: var(--bg-app);
   -webkit-font-smoothing: antialiased;
-  /* 桌面端禁用整页回弹与文本选择拖拽感 */
-  overflow: hidden;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---------- 滚动条 ---------- */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-3);
@@ -97,8 +102,9 @@ body {
 /* ---------- 通用工具类 ---------- */
 .panel {
   background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: var(--glass-border);
+  border-radius: 12px;
+  backdrop-filter: var(--glass-blur);
 }
 
 .muted {
@@ -107,8 +113,9 @@ body {
 
 /* ---------- Markdown 渲染 ---------- */
 .md-body {
+  font-size: 14px;
   line-height: 1.75;
-  word-break: break-word;
+  color: var(--text-1);
 }
 .md-body > *:first-child {
   margin-top: 0;
@@ -123,71 +130,76 @@ body {
 .md-body h2,
 .md-body h3,
 .md-body h4 {
-  margin: 18px 0 8px;
+  margin: 16px 0 8px;
   font-weight: 600;
-  line-height: 1.4;
+  color: var(--text-1);
 }
 .md-body h1 { font-size: 19px; }
 .md-body h2 { font-size: 17px; }
 .md-body h3 { font-size: 15px; }
 .md-body ul,
 .md-body ol {
-  margin: 0 0 10px;
+  margin: 8px 0;
   padding-left: 22px;
 }
 .md-body li {
   margin: 3px 0;
 }
 .md-body code {
-  background: var(--bg-code);
-  border: 1px solid var(--border);
+  padding: 2px 6px;
   border-radius: 4px;
-  padding: 1px 5px;
-  font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
-  font-size: 12.5px;
+  background: var(--bg-code);
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
 }
 .md-body pre {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
   background: var(--bg-code);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
   overflow-x: auto;
-  margin: 0 0 10px;
 }
 .md-body pre code {
-  background: none;
-  border: none;
   padding: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
+  background: transparent;
 }
 .md-body blockquote {
-  margin: 0 0 10px;
-  padding: 6px 14px;
-  border-left: 3px solid var(--border-strong);
+  margin: 10px 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
   color: var(--text-2);
 }
 .md-body table {
+  width: 100%;
+  margin: 10px 0;
   border-collapse: collapse;
-  margin: 0 0 10px;
   font-size: 13px;
 }
 .md-body th,
 .md-body td {
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  text-align: left;
 }
 .md-body th {
   background: var(--bg-code);
+  font-weight: 600;
 }
 .md-body a {
   color: var(--accent);
+  text-decoration: none;
+}
+.md-body a:hover {
+  text-decoration: underline;
 }
 
 /* ---------- 代码高亮（highlight.js 的配色改用变量，随主题切换） ---------- */
 .hljs-comment,
 .hljs-quote {
-  color: var(--text-3);
+  color: #7c8590;
   font-style: italic;
 }
 .hljs-keyword,
@@ -248,4 +260,11 @@ body {
 [data-theme='dark'] .hljs-variable,
 [data-theme='dark'] .hljs-template-variable {
   color: #e06c75;
+}
+
+/* ---------- 主题过渡动画 ---------- */
+*,
+*::before,
+*::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }

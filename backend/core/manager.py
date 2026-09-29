@@ -10,23 +10,26 @@
 若将来单个知识库规模很大，可改为 LRU 淘汰。
 """
 
+from core.config import VECTOR_DIR
 from core.embedder import get_embedder
 from core.retriever import HybridRetriever
 from core.storage import Storage
+from core.vector_index import drop_vector_cache
 
 
 class KBManager:
     """知识库检索索引的懒加载与缓存"""
 
-    def __init__(self, storage: Storage | None = None) -> None:
+    def __init__(self, storage: Storage | None = None, cache_dir=None) -> None:
         self.storage = storage or Storage()
+        self.cache_dir = cache_dir or VECTOR_DIR
         self._index: dict[str, HybridRetriever] = {}
 
     def get_retriever(self, kb_id: str) -> HybridRetriever:
         """获取知识库的检索器，未加载则从持久化数据重建"""
         if kb_id not in self._index:
             chunks = self.storage.get_chunks(kb_id)
-            retriever = HybridRetriever()
+            retriever = HybridRetriever(kb_id=kb_id, cache_dir=self.cache_dir)
             retriever.build(chunks)
             self._index[kb_id] = retriever
         return self._index[kb_id]
@@ -34,6 +37,7 @@ class KBManager:
     def invalidate(self, kb_id: str) -> None:
         """知识库内容变化后调用，强制下次访问时重建索引"""
         self._index.pop(kb_id, None)
+        drop_vector_cache(kb_id, self.cache_dir)
 
     def chunk_count(self, kb_id: str) -> int:
         return self.get_retriever(kb_id).size

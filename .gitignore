@@ -22,6 +22,11 @@ release/
 # 因此终端用户不受影响，只有源码运行者需要联网一次。
 backend/models/
 
+# ---------- 本地模型随包暂存 ----------
+# llama-server.exe 已被上面的 *.exe 覆盖；模型 gguf 体积巨大，严禁入库（只留 README 说明）。
+llama-pkg/*.gguf
+llama-pkg/models/
+
 # ---------- 运行时数据 ----------
 # 含用户导入的知识库（rag.db）与明文存储的云端 API Key（settings.json），严禁入库。
 # 逐个文件名兜底：不论数据目录被指到哪，这两个文件都不会被误提交

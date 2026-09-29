@@ -35,6 +35,8 @@ class Chunk:
     index: int = 0              # 在文档内的序号
     section: str = ""           # 所属小节标题
     metadata: dict = field(default_factory=dict)
+    parent_id: int = -1          # 父切片 ID（-1 表示无父切片）
+    timestamp: float = 0.0       # 时间戳（用于时间衰减）
 
     @property
     def title(self) -> str:
@@ -94,13 +96,25 @@ def split_by_section(
             section_title = section_lines[0]
         section_text = "\n".join(section_lines)
 
-        for part in _split_long(section_text, max_size, overlap):
+        # 父子切片：小片段用于检索，大片段用于展示
+        # 小片段：按 max_size 切分；大片段：按 max_size * 3 切分
+        child_parts = _split_long(section_text, max_size, overlap)
+        parent_parts = _split_long(section_text, max_size * 3, overlap)
+
+        # 建立父子映射：每个小片段找到包含它的大片段
+        parent_idx = 0
+        for child in child_parts:
+            # 找到包含当前小片段的大片段
+            while parent_idx < len(parent_parts) and child[:50] not in parent_parts[parent_idx]:
+                parent_idx += 1
+            pid = parent_idx if parent_idx < len(parent_parts) else -1
             chunks.append(
                 Chunk(
-                    text=part,
+                    text=child,
                     source=source,
                     index=len(chunks),
                     section=section_title,
+                    parent_id=pid,
                 )
             )
     return chunks

@@ -20,7 +20,7 @@ const fs = require('node:fs')
 const { spawn } = require('node:child_process')
 
 const DEV = process.argv.includes('--dev')
-const DEV_URL = process.env.RAG_DEV_URL || 'http://localhost:5178'
+const DEV_URL = process.env.RAG_DEV_URL || 'http://localhost:5173'
 const HEALTH_TIMEOUT_MS = 90000
 
 /**
@@ -51,6 +51,14 @@ const DATA_DIR = app.isPackaged ? app.getPath('userData') : BACKEND_DIR
  * 它属于安装包的一部分，因此放在 resources/backend/models。
  */
 const MODELS_DIR = path.join(BACKEND_DIR, 'models')
+
+/** 本地模型目录（随包分发，只读）。未打包时沿用 D:/llmma 既有资源 */
+const LLAMA_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'llama')
+  : (process.env.RAG_LLAMA_DIR || 'D:\\llmma\\llama-b10853-bin-win-cuda-12.4-x64')
+
+/** 本地推理 sidecar（llama-server），与 Python 后端同生命周期 */
+let llamaProc = null
 
 /** 后端状态，渲染进程通过 IPC 查询与订阅 */
 let backend = { status: 'starting', url: '', message: '' }
@@ -167,6 +175,46 @@ async function waitForHealth(port, timeoutMs = HEALTH_TIMEOUT_MS) {
   throw new Error('后端启动超时，请检查模型服务或依赖是否完整')
 }
 
+/** 轮询前端开发服务器，直到就绪或超时 */
+async function waitForFrontend(url, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(2000) })
+      if (resp.ok) return true
+    } catch {
+      // 端口尚未监听，继续等
+    }
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  return false
+}
+
+/** 本地模型 sidecar：随包的 llama-server 存在且 8080 空闲时拉起，缺失则静默跳过 */
+function startLlamaIfBundled() {
+  try {
+    const exe = path.join(LLAMA_DIR, process.platform === 'win32' ? 'llama-server.exe' : 'llama-server')
+    const model = process.env.RAG_LOCAL_MODEL || path.join(LLAMA_DIR, 'models', 'MiniCPM5-1B-F16.gguf')
+    if (!fs.existsSync(exe) || !fs.existsSync(model)) return
+    llamaProc = spawn(exe, ['-m', model, '-c', '4096', '--port', '8080'], {
+      cwd: LLAMA_DIR, windowsHide: true,
+      env: { ...process.env, CUDA_VISIBLE_DEVICES: process.env.CUDA_VISIBLE_DEVICES || '0' },
+    })
+    llamaProc.on('error', () => { llamaProc = null })
+    llamaProc.on('exit', () => { llamaProc = null })
+  } catch { /* 本地模型是增强项，失败不阻断主链路 */ }
+}
+
+function stopLlama() {
+  const proc = llamaProc
+  if (!proc) return
+  llamaProc = null
+  try {
+    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true })
+    else proc.kill('SIGTERM')
+  } catch (e) { console.error('[main] 回收 llama-server 失败：', e.message) }
+}
+
 /** 结束后端进程。Windows 下 Python 可能带子进程，用 taskkill 连整棵树一起收 */
 function stopBackend() {
   const proc = backendProc
@@ -194,7 +242,7 @@ function setBackend(next) {
 
 // ---------------------------------------------------------------- 窗口
 
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 860,
@@ -210,6 +258,24 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
     },
+  })
+
+  // 捕获前端控制台错误，便于排查白屏
+  mainWindow.webContents.on('console-message', (event, level, message) => {
+    console.log(`[frontend] ${message}`)
+  })
+  // 加载失败自动重试（最多 10 次，指数退避）
+  let retryCount = 0
+  const maxRetries = 10
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    if (retryCount < maxRetries && DEV) {
+      retryCount++
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 30000)
+      console.error(`[frontend] 加载失败 (${errorCode})，${delay / 1000}s 后重试第 ${retryCount} 次`)
+      setTimeout(() => mainWindow.loadURL(DEV_URL), delay)
+    } else {
+      console.error(`[frontend] 加载失败: ${errorCode} - ${errorDescription}`)
+    }
   })
 
   // 等首帧渲染完再显示，避免白屏闪烁
@@ -230,8 +296,9 @@ function createWindow() {
   const distIndex = app.isPackaged
     ? path.join(process.resourcesPath, 'frontend', 'dist', 'index.html')
     : path.join(ROOT, 'frontend', 'dist', 'index.html')
-  if (DEV) {
-    mainWindow.loadURL(DEV_URL)
+  if (DEV && fs.existsSync(distIndex)) {
+    // 开发模式也加载预构建的静态文件，避免 Vite 开发服务器启动延迟导致白屏
+    mainWindow.loadFile(distIndex)
   } else if (fs.existsSync(distIndex)) {
     mainWindow.loadFile(distIndex)
   } else {
@@ -268,6 +335,7 @@ if (!app.requestSingleInstanceLock()) {
     try {
       port = await findFreePort()
       setBackend({ status: 'starting', url: `http://127.0.0.1:${port}`, message: '正在启动本地服务…' })
+      startLlamaIfBundled()
       startBackend(port)
     } catch (e) {
       setBackend({ status: 'error', url: '', message: e.message })
@@ -296,14 +364,16 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     quitting = true
+    stopLlama()
     stopBackend()
   })
 
   // 主进程崩溃或收到信号时也要回收，否则会留下孤儿 Python 进程
-  process.on('exit', stopBackend)
+  process.on('exit', () => { stopLlama(); stopBackend() })
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => {
       quitting = true
+      stopLlama()
       stopBackend()
       app.quit()
     })

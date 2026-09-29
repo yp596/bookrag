@@ -6,7 +6,7 @@ import axios from 'axios'
  *   - Electron：主进程拉起 Python 后才知道端口，启动时由 setApiBase() 注入
  * 因此不能把 baseURL 写死在 axios 实例上，改为每次请求时读取。
  */
-let apiBase = '/api'
+let apiBase = window.location.protocol === 'file:' ? 'http://127.0.0.1:8756/api' : '/api'
 
 export function setApiBase(backendUrl) {
   apiBase = backendUrl ? `${backendUrl}/api` : '/api'
@@ -47,6 +47,16 @@ export const api = {
   deleteKb: (kbId) => http.delete(`/kb/${kbId}`),
   listDocs: (kbId) => http.get(`/kb/${kbId}/docs`),
   deleteDoc: (kbId, docId) => http.delete(`/kb/${kbId}/docs/${docId}`),
+  clearDocs: (kbId) => http.delete(`/kb/${kbId}/docs`),
+  fetchUrl: (kbId, url) => http.post(`/kb/${kbId}/fetch`, { url }),
+  historyList: (kbId, sessionId, limit) =>
+    http.get(`/kb/${kbId}/messages`, { params: { session_id: sessionId, limit } }),
+  historyClear: (kbId, sessionId) =>
+    http.delete(`/kb/${kbId}/messages`, { params: { session_id: sessionId } }),
+  sessionList: (kbId) => http.get(`/kb/${kbId}/sessions`),
+  sessionCreate: (kbId, name) => http.post(`/kb/${kbId}/sessions`, { name }),
+  sessionRename: (kbId, sessionId, name) => http.patch(`/kb/${kbId}/sessions/${sessionId}`, { name }),
+  sessionDelete: (kbId, sessionId) => http.delete(`/kb/${kbId}/sessions/${sessionId}`),
 
   uploadDoc: (kbId, file, onProgress) => {
     const form = new FormData()
@@ -61,6 +71,102 @@ export const api = {
   getSettings: () => http.get('/settings'),
   saveSettings: (payload) => http.post('/settings', payload),
   testSettings: () => http.post('/settings/test'),
+  localModel: () => http.get('/settings/local-model'),
+  kbGraph: (kbId) => http.get(`/kb/${kbId}/graph`),
+  kbTasks: (kbId) => http.get(`/kb/${kbId}/tasks`),
+  searchDocs: (kbId, q) => http.get(`/kb/${kbId}/search`, { params: { q } }),
+  previewDoc: (kbId, docId) => http.get(`/kb/${kbId}/docs/${docId}/preview`),
+  backupAll: () => http.get('/kb/backup'),
+  restoreAll: (data) => http.post('/kb/restore', data),
+  exportKb: (kbId) => http.get(`/kb/${kbId}/export`),
+  importKb: (kbId, data) => http.post(`/kb/${kbId}/import`, data),
+  testDirect: (payload) => http.post('/settings/test-direct', payload),
+  chatMultiTurn: (payload) => http.post('/chat/multi-turn', payload),
+  batchFetchUrls: (kbId, urls) => http.post(`/kb/${kbId}/batch-fetch`, { urls }),
+  compareDocs: (docIds) => http.post('/kb/compare', { doc_ids: docIds }),
+  previewDocument: (path) => http.post('/kb/preview', { path }),
+  chatDebug: (payload) => http.post('/chat/debug', payload),
+  exportChat: (kbId, sessionId) => http.get(`/chat/export/${sessionId}`, { params: { kb_id: kbId } }),
+  chatRecommend: (payload) => http.post('/chat/recommend', payload),
+}
+
+// ====================== SSE 解析 ======================
+
+/**
+ * 创建 SSE 帧解析器。
+ * 将 ReadableStream 解析为事件回调，供 chatStream 使用。
+ */
+function createSSEParser({ onSources, onDelta, onError, onDone }) {
+  let buffer = ''
+  let event = ''
+  let dataLines = []
+  let finished = false
+
+  const dispatch = () => {
+    if (!dataLines.length) {
+      event = ''
+      return
+    }
+    const raw = dataLines.join('\n')
+    try {
+      const payload = JSON.parse(raw)
+      if (event === 'sources') onSources?.(payload)
+      else if (event === 'delta') onDelta?.(payload.text || '')
+      else if (event === 'error') onError?.(new Error(payload.message || '生成失败'))
+      else if (event === 'done') {
+        finished = true
+        onDone?.()
+      }
+    } catch {
+      // 半截 JSON 或心跳注释，忽略即可
+    }
+    event = ''
+    dataLines = []
+  }
+
+  return {
+    /** 喂入一段解码后的文本，返回是否已结束 */
+    feed(text) {
+      buffer += text
+      let nl
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        let line = buffer.slice(0, nl)
+        buffer = buffer.slice(nl + 1)
+        if (line.endsWith('\r')) line = line.slice(0, -1)
+
+        if (line === '') {
+          dispatch()
+        } else if (line.startsWith(':')) {
+          // 注释/心跳
+        } else if (line.startsWith('event:')) {
+          event = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).replace(/^ /, ''))
+        }
+      }
+      return finished
+    },
+    /** 流结束时刷新残留帧 */
+    flush() {
+      dispatch()
+      if (!finished) {
+        finished = true
+        onDone?.()
+      }
+    },
+  }
+}
+
+/**
+ * 发起流式问答请求（仅负责 HTTP 连接，SSE 解析由 createSSEParser 处理）。
+ */
+async function postChat({ kbId, question, topK, sessionId, signal }) {
+  return fetch(`${apiBase}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kb_id: kbId, question, top_k: topK ?? null, session_id: sessionId ?? null }),
+    signal,
+  })
 }
 
 /**
@@ -79,13 +185,13 @@ export const api = {
  * @param {Function} opts.onError
  * @param {AbortSignal} [opts.signal]
  */
-export async function chatStream({ kbId, question, topK, onSources, onDelta, onDone, onError, signal }) {
+export async function chatStream({ kbId, question, topK, sessionId, onSources, onDelta, onDone, onError, signal }) {
   let resp
   try {
     resp = await fetch(`${apiBase}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kb_id: kbId, question, top_k: topK ?? null }),
+      body: JSON.stringify({ kb_id: kbId, question, top_k: topK ?? null, session_id: sessionId ?? null }),
       signal,
     })
   } catch (e) {

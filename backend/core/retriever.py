@@ -20,6 +20,8 @@ BM25 侧的三道相关度防线（解决首轮测试暴露的噪音污染问题
 """
 
 from dataclasses import dataclass, field
+import math
+import time
 
 import jieba
 from rank_bm25 import BM25Okapi
@@ -27,6 +29,11 @@ from rank_bm25 import BM25Okapi
 from core.config import (
     CANDIDATE_K,
     MIN_TERM_COVERAGE,
+    RERANK_ENABLED,
+    RERANK_PHRASE_BONUS,
+    RERANK_W_BM25,
+    RERANK_W_COVERAGE,
+    RERANK_W_VECTOR,
     RRF_K,
     SCORE_THRESHOLD_ABS,
     SCORE_THRESHOLD_REL,
@@ -147,6 +154,15 @@ class BM25Retriever:
             if cov < MIN_TERM_COVERAGE:
                 continue
 
+            # 时间衰减：新文档权重更高，旧文档逐渐降权
+            import time
+            current_time = time.time()
+            chunk_time = self._chunks[i].timestamp or current_time
+            time_diff = current_time - chunk_time
+            # 衰减因子：每 30 天衰减 10%
+            time_decay = math.exp(-0.1 * time_diff / (30 * 24 * 3600))
+            score = score * time_decay
+
             hits.append(Hit(chunk=self._chunks[i], score=float(score), coverage=cov))
 
         return hits[:top_k]
@@ -178,13 +194,75 @@ class HybridRetriever:
         self,
         bm25: BM25Retriever | None = None,
         vector: "VectorRetriever | None" = None,
+        kb_id: str | None = None,
+        cache_dir=None,
     ) -> None:
         self.bm25 = bm25 or BM25Retriever()
         if vector is None:
             from core.vector_index import VectorRetriever
 
-            vector = VectorRetriever()
+            kwargs = {} if cache_dir is None else {"cache_dir": cache_dir}
+            vector = VectorRetriever(kb_id=kb_id, **kwargs)
         self.vector = vector
+        self._cache: dict[str, list[Hit]] = {}
+        self._cache_enabled = True
+
+    def clear_cache(self) -> None:
+        """清空缓存"""
+        self._cache.clear()
+
+    def _cache_key(self, query: str) -> str:
+        """生成缓存键（归一化查询）"""
+        return " ".join(query.lower().split())
+
+    def _get_cache(self, query: str) -> list[Hit] | None:
+        """获取缓存结果"""
+        if not self._cache_enabled:
+            return None
+        key = self._cache_key(query)
+        return self._cache.get(key)
+
+    def _set_cache(self, query: str, hits: list[Hit]) -> None:
+        """设置缓存结果"""
+        if not self._cache_enabled:
+            return
+        key = self._cache_key(query)
+        # 限制缓存大小
+        if len(self._cache) > 1000:
+            self._cache.clear()
+        self._cache[key] = hits
+
+    def retrieve(self, query: str, top_k: int = TOP_K) -> list[Hit]:
+        """双路检索、融合、精排，支持语义缓存"""
+        # 检查缓存
+        cached = self._get_cache(query)
+        if cached is not None:
+            return cached[:top_k]
+
+        # 执行检索
+        bm25_hits = self.bm25.retrieve(query, top_k=max(top_k, CANDIDATE_K))
+
+        if not self.vector.available:
+            result = self._final(query, rerank_hits(query, bm25_hits, top_k=top_k), top_k)
+            self._set_cache(query, result)
+            return result
+
+        vec_hits = self.vector.retrieve(query, top_k=max(top_k, CANDIDATE_K))
+
+        if not bm25_hits and not vec_hits:
+            return []
+
+        if not bm25_hits:
+            result = self._final(query, rerank_hits(query, self._to_hits(vec_hits), top_k=top_k), top_k)
+        elif not vec_hits:
+            result = self._final(query, rerank_hits(query, bm25_hits, top_k=top_k), top_k)
+        else:
+            fused = self._fuse(bm25_hits, vec_hits)
+            result = self._final(query, rerank_hits(query, fused, top_k=top_k), top_k)
+
+        # 写入缓存
+        self._set_cache(query, result)
+        return result
 
     def build(self, chunks: list[Chunk]) -> None:
         self.bm25.build(chunks)
@@ -194,26 +272,16 @@ class HybridRetriever:
     def size(self) -> int:
         return self.bm25.size
 
-    def retrieve(self, query: str, top_k: int = TOP_K) -> list[Hit]:
-        """双路检索并融合。向量不可用时自动退化为 BM25 单路"""
-        bm25_hits = self.bm25.retrieve(query, top_k=max(top_k, CANDIDATE_K))
 
-        if not self.vector.available:
-            return bm25_hits[:top_k]
+    @staticmethod
+    def _final(query: str, hits: list[Hit], top_k: int) -> list[Hit]:
+        """可选 CrossEncoder 第二阶段：关闭/不可用时原样返回"""
+        try:
+            from core.cross_reranker import apply_cross_rerank
 
-        vec_hits = self.vector.retrieve(query, top_k=max(top_k, CANDIDATE_K))
-
-        # 两路都空 = 知识库里确实没有相关内容，交给上层短路，不要硬凑
-        if not bm25_hits and not vec_hits:
-            return []
-
-        # 单路为空时直接用另一路，避免融合后仍为空
-        if not bm25_hits:
-            return self._to_hits(vec_hits)[:top_k]
-        if not vec_hits:
-            return bm25_hits[:top_k]
-
-        return self._fuse(bm25_hits, vec_hits)[:top_k]
+            return apply_cross_rerank(query, hits, top_k=top_k)
+        except Exception:
+            return hits
 
     @staticmethod
     def _to_hits(vec_hits: list[tuple[Chunk, float]]) -> list[Hit]:
@@ -222,10 +290,15 @@ class HybridRetriever:
 
     @staticmethod
     def _fuse(bm25_hits: list[Hit], vec_hits: list[tuple[Chunk, float]]) -> list[Hit]:
-        """RRF 融合两路结果，按切片文本去重（切片无稳定 id 字段）"""
+        """RRF 融合两路结果，按切片文本去重（切片无稳定 id 字段）
+
+        融合只做粗排：保留两路原始信号（bm25_score / vector_score）进 metadata，
+        供后续精排使用。score 字段仍是 RRF 值，仅作展示与调试。
+        """
         rrf: dict[str, float] = {}
         keep: dict[str, Hit] = {}
         bm25_score: dict[str, float] = {}
+        vector_score: dict[str, float] = {}
 
         for rank, hit in enumerate(bm25_hits):
             key = hit.chunk.text
@@ -236,10 +309,11 @@ class HybridRetriever:
         for rank, (chunk, sim) in enumerate(vec_hits):
             key = chunk.text
             rrf[key] = rrf.get(key, 0.0) + 1.0 / (RRF_K + rank + 1)
+            vector_score[key] = sim
             if key not in keep:
                 keep[key] = Hit(chunk=chunk, score=sim, coverage=sim)
 
-        # 按融合分降序；score 取 BM25 原分（有则用），仅作展示与调试
+        # 按融合分降序；score 取 RRF 值，仅作展示与调试
         ordered = sorted(rrf.items(), key=lambda kv: -kv[1])
         out: list[Hit] = []
         for key, fused in ordered:
@@ -252,8 +326,116 @@ class HybridRetriever:
                     metadata={
                         **hit.metadata,
                         "bm25_score": bm25_score.get(key, 0.0),
+                        "vector_score": vector_score.get(key, 0.0),
                         "rrf": fused,
                     },
                 )
             )
         return out
+
+
+def rerank_hits(query: str, hits: list[Hit], top_k: int = TOP_K) -> list[Hit]:
+    """加权精排：把 RRF 丢掉的分数强弱信息取回来。
+
+    RRF 只看名次——BM25 第一名 10 分、第二名 2 分，与向量 0.75 vs 0.70
+    会被抹成同样的名次差。这里用三路原始信号重新打分：
+
+        final = W_BM25 * norm_bm25 + W_VEC * vec_sim
+                + W_COV * coverage + phrase_bonus
+
+    - norm_bm25：候选集内 min-max 归一化（BM25 无上界，必须先归一才能加权）
+    - vec_sim：余弦相似度天然在 [0,1]，直接用；缺失（单路时）记 0
+    - coverage：统一重算（查询词在片段中的覆盖率），不用上游残留值——
+      向量单路的 Hit 把 coverage 记成了相似度，混用会重复计算向量
+    - phrase_bonus：查询原短语逐字出现在片段中则加分，精确串优先
+
+    开关关闭（RERANK_ENABLED=False）时保持原 RRF 顺序直接截断。
+    无命中时返回空列表，不硬凑（拒答逻辑依赖这个约定）。
+    """
+    if not hits:
+        return []
+    if not RERANK_ENABLED:
+        return list(hits)
+
+    terms = tokenize(query, drop_stopwords=True)
+    if not terms:
+        terms = tokenize(query)
+    query_terms = set(terms)
+
+    # 查询原短语：去标点空白后长度不足 2 不做短语判断，避免单字到处命中
+    phrase = "".join(ch for ch in query.strip() if ch.strip() and ch not in "，。？！、；：（）《》，。？！,.;:!?()[]\"' ")
+    use_phrase = len(phrase) >= 2
+
+    bm25_vals = [float(h.metadata.get("bm25_score", h.score)) for h in hits]
+    lo, hi = min(bm25_vals), max(bm25_vals)
+    span = hi - lo
+
+    scored: list[tuple[float, Hit]] = []
+    for hit, raw in zip(hits, bm25_vals):
+        norm_bm25 = (raw - lo) / span if span > 0 else (1.0 if raw > 0 else 0.0)
+        vec_sim = float(hit.metadata.get("vector_score", 0.0) or 0.0)
+        # 单路 Hit 可能没带 vector_score：向量单路的 score 本身就是相似度
+        if vec_sim == 0.0 and "vector_score" not in hit.metadata and hit.coverage > 0 and raw == 0.0:
+            vec_sim = min(max(float(hit.score), 0.0), 1.0)
+
+        doc_terms = set(tokenize(hit.chunk.text))
+        cov = _coverage(query_terms, doc_terms)
+
+        bonus = 0.0
+        if use_phrase and phrase in hit.chunk.text.replace(" ", ""):
+            bonus = RERANK_PHRASE_BONUS
+
+        final = RERANK_W_BM25 * norm_bm25 + RERANK_W_VECTOR * vec_sim + RERANK_W_COVERAGE * cov + bonus
+        scored.append((
+            final,
+            Hit(
+                chunk=hit.chunk,
+                score=final,
+                coverage=cov,
+                metadata={
+                    **hit.metadata,
+                    "bm25_score": raw,
+                    "vector_score": vec_sim,
+                    "rerank": final,
+                    "phrase_hit": bool(bonus),
+                },
+            ),
+        ))
+
+    scored.sort(key=lambda kv: -kv[0])
+    return [h for _, h in scored[:top_k]] if top_k > 0 else [h for _, h in scored]
+
+
+def multi_kb_retrieve(
+    retrievers: dict[str, HybridRetriever],
+    query: str,
+    top_k: int = TOP_K,
+) -> list[Hit]:
+    """联邦检索：多知识库联合检索
+
+    对每个知识库分别检索，合并结果后统一排序。
+
+    Args:
+        retrievers: 知识库 ID 到检索器的映射
+        query: 用户查询
+        top_k: 最终返回的片段数
+
+    Returns:
+        合并后的检索结果
+    """
+    all_hits: list[Hit] = []
+    seen_texts: set[str] = set()
+
+    for kb_id, retriever in retrievers.items():
+        hits = retriever.retrieve(query, top_k=top_k)
+        for hit in hits:
+            # 按文本去重
+            if hit.chunk.text not in seen_texts:
+                seen_texts.add(hit.chunk.text)
+                # 标记来源知识库
+                hit.metadata["kb_id"] = kb_id
+                all_hits.append(hit)
+
+    # 按得分排序，返回前 top_k 个
+    all_hits.sort(key=lambda h: -h.score)
+    return all_hits[:top_k]

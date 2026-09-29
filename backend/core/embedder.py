@@ -117,6 +117,50 @@ class Embedder:
             return []
         return [v.tolist() for v in self._model.embed(texts)]
 
+    def switch_model(self, model_name: str) -> bool:
+        """切换 Embedding 模型
+
+        Args:
+            model_name: 新模型名称
+
+        Returns:
+            是否切换成功
+        """
+        if model_name == self.model_name and self._model is not None:
+            return True  # 相同模型且已加载，无需切换
+
+        # 释放旧模型
+        self._model = None
+        self._failed = False
+        self._error = ""
+        self.model_name = model_name
+
+        # 加载新模型
+        return self._ensure_loaded()
+
+    def embed_image(self, image_path: str) -> list[float] | None:
+        """图片向量化（多模态检索）
+
+        Args:
+            image_path: 图片文件路径
+
+        Returns:
+            图片向量，失败时返回 None
+        """
+        try:
+            from fastembed import ImageEmbedding
+
+            cache_dir = str(MODELS_DIR / "fastembed")
+            Path(cache_dir).mkdir(parents=True, exist_ok=True)
+            model = ImageEmbedding(model_name="Qdrant/clip-ViT-B-32-vision", cache_dir=cache_dir)
+            embeddings = list(model.embed([image_path]))
+            if embeddings:
+                return embeddings[0].tolist()
+            return None
+        except Exception as e:
+            print(f"[embedder] 图片向量化失败：{e}", file=sys.stderr)
+            return None
+
 
 # 全局共享实例。
 #

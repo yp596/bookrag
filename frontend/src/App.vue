@@ -11,9 +11,16 @@ const kb = useKbStore()
 const themeConfig = computed(() => ({
   algorithm: app.isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
   token: {
-    colorPrimary: app.isDark ? '#6b86ff' : '#4f6ef7',
-    colorBgBase: app.isDark ? '#1b1e24' : '#ffffff',
-    borderRadius: 8,
+    colorPrimary: app.isDark ? '#f97316' : '#f97316',
+    colorBgBase: app.isDark ? '#1a1a1a' : '#faf9f7',
+    borderRadius: 12,
+    colorBorder: app.isDark ? '#333333' : '#e8e6e3',
+    colorBorderSecondary: app.isDark ? '#2a2a2a' : '#f0efed',
+    colorBgContainer: app.isDark ? '#242424' : '#ffffff',
+    colorBgElevated: app.isDark ? '#2a2a2a' : '#ffffff',
+    colorText: app.isDark ? '#e8e8e8' : '#1a1a1a',
+    colorTextSecondary: app.isDark ? '#b0b0b0' : '#4a4a4a',
+    colorTextTertiary: app.isDark ? '#707070' : '#8a8a8a',
   },
 }))
 
@@ -46,6 +53,50 @@ onMounted(() => {
   window.addEventListener('focus', onFocus)
 })
 
+/** 全局快捷键 */
+function onKeydown(e) {
+  // Ctrl+K: 命令面板
+  if (e.ctrlKey && e.key === 'k') {
+    e.preventDefault()
+    // TODO: 打开命令面板
+    return
+  }
+  // Ctrl+N: 新对话
+  if (e.ctrlKey && e.key === 'n') {
+    e.preventDefault()
+    // TODO: 新建对话
+    return
+  }
+  // Ctrl+Shift+K: 新建知识库
+  if (e.ctrlKey && e.shiftKey && e.key === 'K') {
+    e.preventDefault()
+    // TODO: 新建知识库
+    return
+  }
+  // Ctrl+E: 导出对话
+  if (e.ctrlKey && e.key === 'e') {
+    e.preventDefault()
+    // TODO: 导出对话
+    return
+  }
+  // Ctrl+R: 重新生成
+  if (e.ctrlKey && e.key === 'r') {
+    e.preventDefault()
+    // TODO: 重新生成
+    return
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('focus', onFocus)
+  app.dispose()
+})
+
 onUnmounted(() => {
   window.removeEventListener('focus', onFocus)
   app.dispose()
@@ -54,6 +105,11 @@ onUnmounted(() => {
 
 <template>
   <a-config-provider :theme="themeConfig">
+    <!-- 离线全局提示横幅 -->
+    <div v-if="app.phase === 'error'" class="offline-banner">
+      <span>后端服务异常，请尝试重启应用</span>
+    </div>
+
     <div class="shell">
       <SideBar />
 
