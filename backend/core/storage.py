@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS doc (
     created_at  TEXT NOT NULL,
     content_hash TEXT,
     tags TEXT DEFAULT '',
+    status     TEXT DEFAULT 'completed',
     FOREIGN KEY (kb_id) REFERENCES kb(id) ON DELETE CASCADE
 );
 
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS message (
     text       TEXT NOT NULL,
     sources    TEXT,                 -- JSON：助手回答的引用来源，提问时为空
     created_at TEXT NOT NULL,
+    feedback    TEXT,                 -- 用户反馈（up/down）
     FOREIGN KEY (kb_id) REFERENCES kb(id) ON DELETE CASCADE
 );
 
@@ -727,3 +729,37 @@ class Storage:
         with self._connect() as conn:
             rows = conn.execute("SELECT key, value FROM user_preference").fetchall()
             return {r["key"]: r["value"] for r in rows}
+
+    def update_message_feedback(self, msg_id: int, feedback: str | None) -> bool:
+        """更新消息反馈（点赞/点踩）
+
+        Args:
+            msg_id: 消息 ID
+            feedback: 反馈类型（'up' 或 'down'），None 表示清除反馈
+
+        Returns:
+            是否更新成功
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE message SET feedback = ? WHERE id = ?",
+                (feedback, msg_id),
+            )
+            return cur.rowcount > 0
+
+    def update_document_status(self, doc_id: str, status: str) -> bool:
+        """更新文档状态
+
+        Args:
+            doc_id: 文档 ID
+            status: 状态（pending/processing/completed/failed）
+
+        Returns:
+            是否更新成功
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE doc SET status = ? WHERE id = ?",
+                (status, doc_id),
+            )
+            return cur.rowcount > 0

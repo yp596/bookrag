@@ -88,6 +88,7 @@ export const api = {
   chatDebug: (payload) => http.post('/chat/debug', payload),
   exportChat: (kbId, sessionId) => http.get(`/chat/export/${sessionId}`, { params: { kb_id: kbId } }),
   chatRecommend: (payload) => http.post('/chat/recommend', payload),
+  messageFeedback: (msgId, type) => http.post(`/chat/feedback/${msgId}`, { type }),
 }
 
 // ====================== SSE 解析 ======================

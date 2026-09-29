@@ -37,13 +37,48 @@ const batchFetching = ref(false)
 const showBatchUrl = ref(false)
 
 // ---------- 文档搜索过滤 ----------
+// ---------- 标签筛选 ----------
+const selectedTags = ref([])
+const allTags = computed(() => {
+  const tags = new Set()
+  for (const doc of kb.docs) {
+    if (doc.tags) {
+      for (const tag of doc.tags.split(',')) {
+        const t = tag.trim()
+        if (t) tags.add(t)
+      }
+    }
+  }
+  return Array.from(tags).sort()
+})
+
+function toggleTagFilter(tag) {
+  const idx = selectedTags.value.indexOf(tag)
+  if (idx >= 0) {
+    selectedTags.value.splice(idx, 1)
+  } else {
+    selectedTags.value.push(tag)
+  }
+}
+
+// ---------- 文档搜索过滤 ----------
 const docSearchQuery = ref('')
 const filteredDocs = computed(() => {
-  if (!docSearchQuery.value.trim()) return kb.docs
-  const q = docSearchQuery.value.toLowerCase()
-  return kb.docs.filter((d) =>
-    d.filename.toLowerCase().includes(q)
-  )
+  let result = kb.docs
+  // 标签筛选
+  if (selectedTags.value.length) {
+    result = result.filter(d => {
+      if (!d.tags) return false
+      const docTags = d.tags.split(',').map(t => t.trim())
+      return selectedTags.value.some(t => docTags.includes(t))
+    })
+  }
+  // 搜索过滤
+  if (docSearchQuery.value.trim()) {
+    const q = docSearchQuery.value.toLowerCase()
+    result = result.filter(d => d.filename.toLowerCase().includes(q))
+  }
+  return result
 })
 
 // ---------- 知识库导出/导入 ----------
@@ -168,6 +203,25 @@ async function openPreview(doc) {
   } finally {
     previewLoading.value = false
   }
+}
+
+function copyPreview() {
+  navigator.clipboard.writeText(previewText.value).then(() => {
+    antMessage.success('已复制到剪贴板')
+  }).catch(() => {
+    antMessage.error('复制失败')
+  })
+}
+
+function downloadPreview() {
+  const blob = new Blob([previewText.value], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${previewDoc.value?.filename || '预览'}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+  antMessage.success('已下载')
 }
 
 const pending = ref([])
@@ -303,11 +357,38 @@ async function submitBatchFetch() {
     if (res.errors.length > 0 && res.imported > 0) {
       antMessage.warning(`部分失败：${res.errors.join('；')}`)
     }
+
   } catch (e) {
     antMessage.error(`批量抓取失败：${e.message}`)
   } finally {
     batchFetching.value = false
   }
+}
+
+function formatSize(chars) {
+  if (chars < 1024) return `${chars} B`
+  if (chars < 1024 * 1024) return `${(chars / 1024).toFixed(1)} KB`
+  return `${(chars / 1024 / 1024).toFixed(1)} MB`
+}
+
+function docStatusLabel(status) {
+  const labels = {
+    pending: '等待中',
+    processing: '索引中...',
+    completed: '已索引',
+    failed: '失败',
+  }
+  return labels[status] || '已索引'
+}
+
+function docStatusColor(status) {
+  const colors = {
+    pending: 'default',
+    processing: 'processing',
+    completed: 'success',
+    failed: 'error',
+  }
+  return colors[status] || 'success'
 }
 
 // ---------- 文档对比 ----------
@@ -429,6 +510,29 @@ function formatTime(s) {
           还没有知识库
         </div>
       </div>
+
+        <!-- 知识库统计 -->
+        <div v-if="kb.currentId" class="kb-stats">
+          <div class="kb-stats-title">知识库统计</div>
+          <div class="kb-stats-grid">
+            <div class="kb-stat-item">
+              <div class="kb-stat-value">{{ kb.current()?.doc_count || 0 }}</div>
+              <div class="kb-stat-label">文档数</div>
+            </div>
+            <div class="kb-stat-item">
+              <div class="kb-stat-value">{{ kb.current()?.chunk_count || 0 }}</div>
+              <div class="kb-stat-label">片段数</div>
+            </div>
+            <div class="kb-stat-item">
+              <div class="kb-stat-value">{{ formatSize(kb.current()?.total_chars || 0) }}</div>
+              <div class="kb-stat-label">存储占用</div>
+            </div>
+            <div class="kb-stat-item">
+              <div class="kb-stat-value">{{ kb.current()?.session_count || 0 }}</div>
+              <div class="kb-stat-label">会话数</div>
+            </div>
+          </div>
+        </div>
     </aside>
 
     <!-- ---------- 右：文档管理 ---------- -->
@@ -578,6 +682,21 @@ function formatTime(s) {
             <a-button size="small" @click="batchMode = false">取消</a-button>
           </div>
 
+          <!-- 标签筛选 -->
+          <div v-if="allTags.length" class="tag-filter">
+            <span class="tag-filter-label">标签筛选：</span>
+            <a-tag
+              v-for="tag in allTags"
+              :key="tag"
+              :color="selectedTags.includes(tag) ? 'blue' : ''"
+              class="tag-filter-item"
+              @click="toggleTagFilter(tag)"
+            >
+              {{ tag }}
+            </a-tag>
+            <a-button size="small" type="text" @click="selectedTags = []">清除</a-button>
+          </div>
+
           <!-- 加载骨架屏 -->
           <div v-if="kb.loading && !docs.length" class="docs">
             <div v-for="i in 3" :key="i" class="doc-card">
@@ -600,7 +719,7 @@ function formatTime(s) {
                   {{ doc.chunk_count }} 个片段 · {{ formatTime(doc.created_at) }}
                 </div>
               </div>
-              <a-tag color="success">已索引</a-tag>
+              <a-tag :color="docStatusColor(doc.status)">{{ docStatusLabel(doc.status) }}</a-tag>
               <button class="doc-action" title="对比文档" @click="openCompare(doc)">
                 <FileTextOutlined />
               </button>
@@ -658,6 +777,19 @@ function formatTime(s) {
         <a-spin />
       </div>
       <div v-else class="preview-body">
+        <div class="preview-toolbar">
+          <a-button size="small" @click="copyPreview">
+            <template #icon><FileTextOutlined /></template>
+            复制
+          </a-button>
+          <a-button size="small" @click="downloadPreview">
+            <template #icon><DownloadOutlined /></template>
+            下载
+          </a-button>
+          <span class="preview-stats muted">
+            {{ previewText.length }} 字符 · {{ previewDoc?.chunk_count || 0 }} 片段
+          </span>
+        </div>
         <pre>{{ previewText }}</pre>
       </div>
     </a-modal>

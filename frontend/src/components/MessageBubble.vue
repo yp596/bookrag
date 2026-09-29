@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { CopyOutlined, CheckOutlined, WarningOutlined, EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
+import { CopyOutlined, CheckOutlined, WarningOutlined, EditOutlined, SaveOutlined, CloseOutlined, ReloadOutlined, ThunderboltOutlined, UpOutlined, DownOutlined } from '@ant-design/icons-vue'
 import SourceCard from './SourceCard.vue'
 import { renderMarkdown } from '../utils/markdown'
 import { useClipboard } from '../composables/useClipboard'
@@ -9,7 +9,7 @@ const props = defineProps({
   message: { type: Object, required: true },
 })
 
-const emit = defineEmits(['edit', 'regenerate'])
+const emit = defineEmits(['edit', 'regenerate', 'feedback'])
 
 const isUser = computed(() => props.message.role === 'user')
 const html = computed(() => (isUser.value ? '' : renderMarkdown(props.message.text)))
@@ -85,6 +85,12 @@ function regenerate() {
         </button>
         <button class="act" @click="regenerate" title="重新生成">
           <ReloadOutlined />
+        </button>
+        <button class="act" :class="{ active: message.feedback === 'up' }" @click="emit('feedback', { id: message.id, type: 'up' })">
+          <UpOutlined />
+        </button>
+        <button class="act" :class="{ active: message.feedback === 'down' }" @click="emit('feedback', { id: message.id, type: 'down' })">
+          <DownOutlined />
         </button>
         <span v-if="message.stopped" class="muted">已中断</span>
       </div>

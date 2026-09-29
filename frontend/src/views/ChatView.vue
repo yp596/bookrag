@@ -90,6 +90,53 @@ const searchResults = computed(() => {
   return results
 })
 
+// ---------- 搜索选项 ----------
+const searchOptions = reactive({
+  caseSensitive: false,
+  wholeWord: false,
+  regex: false,
+})
+
+const searchResultsEnhanced = computed(() => {
+  if (!searchQuery.value.trim()) return []
+  const q = searchQuery.value.trim()
+  const results = []
+  for (const m of messages.value) {
+    const text = m.text
+    if (searchOptions.regex) {
+      try {
+        const flags = searchOptions.caseSensitive ? 'g' : 'gi'
+        const regex = new RegExp(q, flags)
+        let match
+        while ((match = regex.exec(text)) !== null) {
+          results.push({ msgId: m.id, start: match.index, end: match.index + match[0].length })
+          if (match[0].length === 0) regex.lastIndex++
+        }
+      } catch {
+        // 正则表达式无效，回退到普通搜索
+      }
+    } else if (searchOptions.wholeWord) {
+      const flags = searchOptions.caseSensitive ? 'g' : 'gi'
+      const regex = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, flags)
+      let match
+      while ((match = regex.exec(text)) !== null) {
+        results.push({ msgId: m.id, start: match.index, end: match.index + match[0].length })
+      }
+    } else {
+      const query = searchOptions.caseSensitive ? q : q.toLowerCase()
+      const searchText = searchOptions.caseSensitive ? text : text.toLowerCase()
+      let pos = 0
+      while (true) {
+        const idx = searchText.indexOf(query, pos)
+        if (idx === -1) break
+        results.push({ msgId: m.id, start: idx, end: idx + query.length })
+        pos = idx + query.length
+      }
+    }
+  }
+  return results
+})
+
 function goToMessage(msgId) {
   const el = document.querySelector(`[data-msg-id="${msgId}"]`)
   if (el) {
@@ -97,6 +144,21 @@ function goToMessage(msgId) {
     el.style.backgroundColor = 'rgba(255, 230, 100, 0.3)'
     setTimeout(() => { el.style.backgroundColor = '' }, 1500)
   }
+}
+
+// ---------- 搜索历史 ----------
+const searchHistory = ref(JSON.parse(localStorage.getItem('rag-search-history') || '[]'))
+
+function addToSearchHistory(query) {
+  if (!query.trim()) return
+  // 去重并限制数量
+  searchHistory.value = [query, ...searchHistory.value.filter(q => q !== query)].slice(0, 10)
+  localStorage.setItem('rag-search-history', JSON.stringify(searchHistory.value))
+}
+
+function clearSearchHistory() {
+  searchHistory.value = []
+  localStorage.removeItem('rag-search-history')
 }
 
 // ---------- P3: 导出对话 ----------
@@ -117,6 +179,55 @@ function exportConversation() {
       }
     }
   }
+
+// ---------- 导出对话为 PDF ----------
+function exportConversationPdf() {
+  if (!messages.value.length) return
+  const content = messages.value.map(m => {
+    const role = m.role === 'user' ? '我' : 'AI'
+    let html = `<div class="message"><div class="role">${role}</div><div class="text">${m.text}</div>`
+    if (m.sources?.length) {
+      html += '<div class="sources"><div class="sources-title">引用来源：</div><ul>'
+      for (const s of m.sources) {
+        html += `<li>${s.title || s.source}（${s.source}）</li>`
+      }
+      html += '</ul></div>'
+    }
+    html += '</div>'
+    return html
+  }).join('')
+
+  const html = `
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>${currentKb?.name || '对话'} — ${currentSid.value || '未命名'}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .message { margin-bottom: 20px; padding: 12px; border-radius: 8px; }
+        .role { font-weight: 600; margin-bottom: 8px; }
+        .text { line-height: 1.6; }
+        .sources { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+        .sources-title { font-weight: 600; margin-bottom: 8px; }
+        .sources ul { margin: 0; padding-left: 20px; }
+      </style>
+    </head>
+    <body>
+      <h1>${currentKb?.name || '对话'} — ${currentSid.value || '未命名'}</h1>
+      ${content}
+    </body>
+    </html>
+  `
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `对话_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.html`
+  a.click()
+  URL.revokeObjectURL(url)
+  antMessage.success('已导出为 HTML，可在浏览器中打印为 PDF')
+}
   const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -125,6 +236,56 @@ function exportConversation() {
   a.click()
   URL.revokeObjectURL(url)
   antMessage.success('已导出对话')
+}
+
+// ---------- 对话分享 ----------
+function shareConversation() {
+  if (!messages.value.length) return
+  const content = messages.value.map(m => {
+    const role = m.role === 'user' ? '我' : 'AI'
+    let html = `<div class="message"><div class="role">${role}</div><div class="text">${m.text}</div>`
+    if (m.sources?.length) {
+      html += '<div class="sources"><div class="sources-title">引用来源：</div><ul>'
+      for (const s of m.sources) {
+        html += `<li>${s.title || s.source}（${s.source}）</li>`
+      }
+      html += '</ul></div>'
+    }
+    html += '</div>'
+    return html
+  }).join('')
+
+  const html = `
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>${currentKb?.name || '对话'} — ${currentSid.value || '未命名'}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #faf9f7; color: #1a1a1a; }
+        h1 { font-size: 24px; margin-bottom: 20px; }
+        .message { margin-bottom: 20px; padding: 16px; border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .role { font-weight: 600; margin-bottom: 8px; color: #f97316; }
+        .text { line-height: 1.6; white-space: pre-wrap; }
+        .sources { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+        .sources-title { font-weight: 600; margin-bottom: 8px; }
+        .sources ul { margin: 0; padding-left: 20px; }
+      </style>
+    </head>
+    <body>
+      <h1>${currentKb?.name || '对话'} — ${currentSid.value || '未命名'}</h1>
+      ${content}
+    </body>
+    </html>
+  `
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `对话分享_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.html`
+  a.click()
+  URL.revokeObjectURL(url)
+  antMessage.success('已导出分享文件，发送给他人即可查看')
 }
 
 // ---------- P3: 消息重新生成 ----------
@@ -283,6 +444,21 @@ function confirmDeleteSession() {
   })
 }
 
+// ---------- 消息点赞/点踩 ----------
+async function handleFeedback({ id, type }) {
+  try {
+    await api.messageFeedback(id, type)
+    // 更新本地消息状态
+    const msgList = messages.value
+    const idx = msgList.findIndex((m) => m.id === id)
+    if (idx !== -1) {
+      msgList[idx].feedback = msgList[idx].feedback === type ? null : type
+    }
+  } catch (e) {
+    antMessage.error(`操作失败：${e.message}`)
+  }
+}
+
 // ---------- P3: 快捷键 ----------
 function onGlobalKeydown(e) {
   if (e.ctrlKey && e.key === 'k') {
@@ -427,6 +603,16 @@ async function loadRecommendations() {
               <template #icon><DownloadOutlined /></template>
             </a-button>
           </a-tooltip>
+          <a-tooltip title="导出对话为 PDF">
+            <a-button type="text" :disabled="!messages.length" @click="exportConversationPdf">
+              <template #icon><DownloadOutlined /></template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip title="分享对话">
+            <a-button type="text" :disabled="!messages.length" @click="shareConversation">
+              <template #icon><MessageOutlined /></template>
+            </a-button>
+          </a-tooltip>
           <a-tooltip title="检索调试">
             <a-button type="text" :disabled="chat.streaming || chat.sending" @click="openDebug">
               <template #icon><SearchOutlined /></template>
@@ -450,7 +636,7 @@ async function loadRecommendations() {
           @press-enter="nextSearchResult"
         />
         <span class="search-count">
-          {{ searchResults.length ? `${currentSearchIndex + 1}/${searchResults.length}` : '0/0' }}
+          {{ searchResultsEnhanced.length ? `${currentSearchIndex + 1}/${searchResultsEnhanced.length}` : '0/0' }}
         </span>
         <a-button size="small" @click="prevSearchResult">
           <template #icon><UpOutlined /></template>
@@ -461,6 +647,11 @@ async function loadRecommendations() {
         <a-button size="small" @click="closeSearch">
           <template #icon><CloseOutlined /></template>
         </a-button>
+        <div class="search-options">
+          <a-checkbox v-model:checked="searchOptions.caseSensitive">区分大小写</a-checkbox>
+          <a-checkbox v-model:checked="searchOptions.wholeWord">全词匹配</a-checkbox>
+          <a-checkbox v-model:checked="searchOptions.regex">正则表达式</a-checkbox>
+        </div>
       </div>
 
       <!-- ---------- 多轮检索状态 ---------- -->
@@ -489,14 +680,30 @@ async function loadRecommendations() {
             placeholder="搜索消息内容…"
             @keydown.esc="searchOpen = false"
           />
-          <span class="search-count muted">{{ searchResults.length }} 条结果</span>
+          <span class="search-count muted">{{ searchResultsEnhanced.length }} 条结果</span>
           <a-button size="small" type="text" @click="searchOpen = false">
             <template #icon><CloseOutlined /></template>
           </a-button>
         </div>
+        <div v-if="searchHistory.length" class="search-history">
+          <div class="search-history-header">
+            <span class="search-history-title">搜索历史</span>
+            <a-button size="small" type="text" @click="clearSearchHistory">清空</a-button>
+          </div>
+          <div class="search-history-list">
+            <div
+              v-for="(item, i) in searchHistory"
+              :key="i"
+              class="search-history-item"
+              @click="searchQuery = item"
+            >
+              {{ item }}
+            </div>
+          </div>
+        </div>
         <div class="search-results">
           <div
-            v-for="(r, i) in searchResults.slice(0, 20)"
+            v-for="(r, i) in searchResultsEnhanced.slice(0, 20)"
             :key="i"
             class="search-item"
             :class="{ active: i === searchIndex }"
@@ -549,7 +756,7 @@ async function loadRecommendations() {
 
         <!-- 对话正文 -->
         <div v-else class="thread">
-          <MessageBubble v-for="m in messages" :key="m.id" :message="m" @edit="handleEdit" @regenerate="regenerateLast" />
+          <MessageBubble v-for="m in messages" :key="m.id" :message="m" @edit="handleEdit" @regenerate="regenerateLast" @feedback="handleFeedback" />
         </div>
       </div>
 

@@ -282,3 +282,20 @@ def chat_recommend(req: ChatRequest) -> dict:
         return {"ok": True, "questions": questions}
     except Exception as e:
         return {"ok": True, "questions": [], "error": str(e)}
+
+
+@router.post("/chat/feedback/{msg_id}")
+def message_feedback(msg_id: int, data: dict) -> dict:
+    """消息反馈：点赞/点踩
+
+    用于收集用户对回答质量的反馈，帮助优化回答效果。
+    """
+    feedback = data.get("type")
+    if feedback not in ("up", "down", None):
+        raise HTTPException(status_code=400, detail="无效的反馈类型")
+
+    success = storage.update_message_feedback(msg_id, feedback)
+    if not success:
+        raise HTTPException(status_code=404, detail="消息不存在")
+
+    return {"ok": True, "feedback": feedback}

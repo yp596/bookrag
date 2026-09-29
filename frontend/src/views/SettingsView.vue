@@ -23,6 +23,7 @@ const form = reactive({
   chunk_size: 800,
   chunk_overlap: 100,
   cross_rerank_enabled: false,
+  font_size: 'medium',
 })
 
 const loading = ref(true)
