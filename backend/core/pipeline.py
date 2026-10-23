@@ -63,6 +63,7 @@ class RAGPipeline:
         llm_config: dict | None = None,
         use_gguf: bool = False,
         gguf_model_path: str | None = None,
+        use_qdrant: bool = False,
     ) -> None:
         if use_gguf:
             self.llm = GGUFLocalModel(model_path=gguf_model_path or "models/MiniCPM5-1B-F16.gguf")
@@ -72,7 +73,7 @@ class RAGPipeline:
             self.llm = LLMClient(**llm_config)
         else:
             self.llm = LLMClient(mode=llm_mode)
-        self.retriever = retriever if retriever is not None else HybridRetriever()
+        self.retriever = retriever if retriever is not None else HybridRetriever(use_qdrant=use_qdrant)
         self.top_k = top_k
         self._chunks: list[Chunk] = []
 

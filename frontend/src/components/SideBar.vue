@@ -152,6 +152,32 @@ async function createSession() {
   }
 }
 
+// ---------- 重命名会话 ----------
+const renamingSid = ref(null)
+const renameValue = ref('')
+
+function startRename(s) {
+  renamingSid.value = s.value
+  renameValue.value = s.label.replace(/ · \d+$/, '')
+}
+
+async function confirmRename() {
+  if (!renamingSid.value || !renameValue.value.trim()) {
+    renamingSid.value = null
+    return
+  }
+  try {
+    await chat.renameSession(kb.currentId, renamingSid.value, renameValue.value.trim())
+  } catch (e) {
+    // 错误处理
+  }
+  renamingSid.value = null
+}
+
+function cancelRename() {
+  renamingSid.value = null
+}
+
 // ---------- 对话详情弹窗 ----------
 const detailOpen = ref(false)
 const detailSession = ref(null)

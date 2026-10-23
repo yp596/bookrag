@@ -12,8 +12,10 @@ node_modules/
 # ---------- 构建产物 ----------
 frontend/dist/
 backend/dist/
+backend/dist-fresh/
 backend/build/
 release/
+rag-release2/
 *.exe
 
 # ---------- 嵌入模型 ----------
@@ -41,3 +43,6 @@ settings.json
 .idea/
 Thumbs.db
 Desktop.ini
+
+# ---------- 走查工作目录（本地生成、不入库） ----------
+.tmp-verify/

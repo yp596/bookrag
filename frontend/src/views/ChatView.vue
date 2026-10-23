@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal, message as antMessage } from 'ant-design-vue'
 import {
@@ -566,33 +566,31 @@ async function loadRecommendations() {
         </span>
 
         <div class="bar-right">
-          <a-tooltip title="新建知识库">
-            <a-button type="text" @click="router.push('/knowledge')">
-              <template #icon><PlusOutlined /></template>
+          <!-- 会话管理 -->
+          <a-tooltip title="新建会话">
+            <a-button type="text" :disabled="chat.streaming" @click="createSession">
+              <template #icon><MessageOutlined /></template>
             </a-button>
           </a-tooltip>
-          <template v-if="currentKb">
-            <a-tooltip title="新建会话">
-              <a-button type="text" :disabled="chat.streaming" @click="createSession">
-                <template #icon><MessageOutlined /></template>
-              </a-button>
-            </a-tooltip>
-            <a-tooltip title="重命名当前会话">
-              <a-button type="text" :disabled="chat.streaming || !currentSid" @click="openRename">
-                <template #icon><EditOutlined /></template>
-              </a-button>
-            </a-tooltip>
-            <a-tooltip title="删除当前会话（含全部消息）">
-              <a-button type="text" danger :disabled="chat.streaming || !currentSid" @click="confirmDeleteSession">
-                <template #icon><DeleteOutlined /></template>
-              </a-button>
-            </a-tooltip>
-          </template>
+          <a-tooltip title="重命名当前会话">
+            <a-button type="text" :disabled="chat.streaming || !currentSid" @click="openRename">
+              <template #icon><EditOutlined /></template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip title="删除当前会话">
+            <a-button type="text" danger :disabled="chat.streaming || !currentSid" @click="confirmDeleteSession">
+              <template #icon><DeleteOutlined /></template>
+            </a-button>
+          </a-tooltip>
           <a-tooltip title="清空当前会话消息">
             <a-button type="text" :disabled="!messages.length || chat.streaming" @click="clearConversation">
               <template #icon><ClearOutlined /></template>
             </a-button>
           </a-tooltip>
+
+          <a-divider type="vertical" />
+
+          <!-- 搜索与导出 -->
           <a-tooltip title="搜索消息 (Ctrl+K)">
             <a-button type="text" @click="searchOpen = !searchOpen">
               <template #icon><SearchOutlined /></template>
@@ -603,16 +601,15 @@ async function loadRecommendations() {
               <template #icon><DownloadOutlined /></template>
             </a-button>
           </a-tooltip>
-          <a-tooltip title="导出对话为 PDF">
-            <a-button type="text" :disabled="!messages.length" @click="exportConversationPdf">
-              <template #icon><DownloadOutlined /></template>
-            </a-button>
-          </a-tooltip>
           <a-tooltip title="分享对话">
             <a-button type="text" :disabled="!messages.length" @click="shareConversation">
               <template #icon><MessageOutlined /></template>
             </a-button>
           </a-tooltip>
+
+          <a-divider type="vertical" />
+
+          <!-- 调试工具 -->
           <a-tooltip title="检索调试">
             <a-button type="text" :disabled="chat.streaming || chat.sending" @click="openDebug">
               <template #icon><SearchOutlined /></template>

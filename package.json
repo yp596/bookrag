@@ -1,0 +1,6 @@
+{
+  "main": "electron/main.js",
+  "devDependencies": {
+    "electron": "^44.4.5"
+  }
+}

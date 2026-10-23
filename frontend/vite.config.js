@@ -6,7 +6,13 @@ export default defineConfig({
   // Electron 以 file:// 加载打包产物，必须用相对路径
   base: './',
   server: {
-    port: 5178,
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8756',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',

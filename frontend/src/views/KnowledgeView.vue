@@ -1185,7 +1185,7 @@ function formatTime(s) {
 
 /* ---------- 左列 ---------- */
 .kb-col {
-  width: 268px;
+  width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1196,7 +1196,7 @@ function formatTime(s) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
 }
 .col-head.main {
@@ -1204,7 +1204,7 @@ function formatTime(s) {
   background: var(--bg-panel);
 }
 .col-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 .head-actions {
@@ -1216,14 +1216,14 @@ function formatTime(s) {
 .kb-list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 8px;
 }
 .kb-card {
   position: relative;
-  padding: 10px 12px;
-  margin-bottom: 6px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -1233,13 +1233,13 @@ function formatTime(s) {
 .kb-card.active {
   background: var(--accent-soft);
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.12);
+  box-shadow: 0 2px 6px rgba(249, 115, 22, 0.1);
 }
 .kb-name {
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
-  margin-bottom: 3px;
-  padding-right: 22px;
+  margin-bottom: 2px;
+  padding-right: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1248,34 +1248,41 @@ function formatTime(s) {
   color: var(--accent);
 }
 .kb-meta {
-  font-size: 11.5px;
-}
-.kb-del {
-  position: absolute;
-  top: 9px;
-  right: 8px;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  font-size: 11px;
   color: var(--text-3);
-  font-size: 12px;
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.15s;
 }
-.kb-card:hover .kb-del {
-  opacity: 1;
+.kb-stats {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
 }
-.kb-del:hover {
-  background: rgba(245, 63, 63, 0.12);
-  color: #f53f3f;
+.kb-stats-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
-.kb-empty {
-  padding: 24px 8px;
-  text-align: center;
-  font-size: 12.5px;
+.kb-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.kb-stat-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-hover);
+}
+.kb-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.kb-stat-label {
+  font-size: 10.5px;
+  color: var(--text-3);
+  margin-top: 1px;
 }
 
 /* ---------- 右列 ---------- */
@@ -1289,75 +1296,246 @@ function formatTime(s) {
 .doc-body {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 22px;
+  padding: 14px 18px;
 }
 
 .dragger :deep(.ant-upload-drag) {
   height: auto;
   background: var(--bg-panel);
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px dashed var(--border-strong);
 }
 .dragger :deep(.ant-upload-btn) {
-  padding: 22px 0;
+  padding: 16px 0;
 }
 .dragger :deep(.ant-upload-drag-icon) {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 .dragger :deep(.ant-upload-drag-icon .anticon) {
   color: var(--accent);
 }
 .dragger :deep(.ant-upload-text) {
   color: var(--text-1);
-  font-size: 14px;
+  font-size: 13px;
 }
 .dragger :deep(.ant-upload-hint) {
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .progress {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 14px;
-  padding: 10px 14px;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-panel);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .url-row {
   display: flex;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 10px;
 }
 .progress :deep(.ant-progress) {
   flex: 1;
   margin: 0;
 }
 .progress-name {
-  max-width: 220px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
 }
 
+/* ---------- 折叠区块通用 ---------- */
+.batch-url-section,
+.fetch-config-section,
+.schedule-section,
+.incremental-section,
+.agent-task-section {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.batch-url-header,
+.fetch-config-header,
+.schedule-header,
+.incremental-header,
+.agent-task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
+}
+.batch-url-title,
+.fetch-config-title,
+.schedule-title,
+.incremental-title,
+.agent-task-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.batch-url-body,
+.fetch-config-body,
+.schedule-body,
+.incremental-body,
+.agent-task-body {
+  padding: 10px 12px;
+}
+.batch-url-actions,
+.fetch-config-actions,
+.schedule-actions,
+.incremental-actions,
+.agent-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ---------- 爬取配置 ---------- */
+.fetch-config-item {
+  margin-bottom: 8px;
+}
+.fetch-config-item:last-child {
+  margin-bottom: 0;
+}
+.fetch-config-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
+/* ---------- 定时爬取 ---------- */
+.schedule-item {
+  margin-bottom: 8px;
+}
+.schedule-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.schedule-list {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.schedule-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.schedule-url {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-freq {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* ---------- 增量爬取 ---------- */
+.incremental-item {
+  margin-bottom: 8px;
+}
+.incremental-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
+/* ---------- Agent 任务 ---------- */
+.agent-task-item {
+  margin-bottom: 8px;
+}
+.agent-task-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.agent-task-list {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.agent-task-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.agent-task-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 文档搜索 ---------- */
+.doc-search {
+  margin-top: 10px;
+}
+
+/* ---------- 批量操作 ---------- */
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+
+/* ---------- 标签筛选 ---------- */
+.tag-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.tag-filter-label {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.tag-filter-item {
+  cursor: pointer;
+}
+
 /* ---------- 文档卡片 ---------- */
 .docs {
-  margin-top: 18px;
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .doc-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
+  gap: 10px;
+  padding: 9px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-panel);
   transition: box-shadow 0.15s, border-color 0.15s;
 }
@@ -1366,7 +1544,7 @@ function formatTime(s) {
   box-shadow: var(--shadow-sm);
 }
 .doc-icon {
-  font-size: 19px;
+  font-size: 17px;
   color: var(--accent);
   flex-shrink: 0;
 }
@@ -1375,26 +1553,47 @@ function formatTime(s) {
   min-width: 0;
 }
 .doc-name {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .doc-meta {
-  font-size: 11.5px;
-  margin-top: 2px;
+  font-size: 11px;
+  margin-top: 1px;
 }
-.doc-del {
-  width: 26px;
-  height: 26px;
+.doc-action {
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
   transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.doc-del {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .doc-del:hover {
   background: rgba(245, 63, 63, 0.12);
@@ -1407,29 +1606,29 @@ function formatTime(s) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 48px 20px;
+  gap: 8px;
+  padding: 36px 16px;
   text-align: center;
 }
 .doc-empty.full {
   height: 100%;
 }
 .empty-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   background: var(--bg-hover);
   color: var(--text-3);
-  font-size: 21px;
+  font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .doc-empty p {
   margin: 0;
-  font-size: 13px;
-  max-width: 380px;
-  line-height: 1.7;
+  font-size: 12.5px;
+  max-width: 320px;
+  line-height: 1.6;
 }
 .graph-card {
   margin-top: 14px;
@@ -1459,32 +1658,32 @@ function formatTime(s) {
 /* ---------- 知识库搜索 ---------- */
 .search-row {
   display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 .search-results {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-panel);
   overflow: hidden;
 }
 .search-result-item {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 .search-result-item:last-child {
   border-bottom: none;
 }
 .search-result-file {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--accent);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .search-result-text {
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: 12px;
+  line-height: 1.6;
   color: var(--text-2);
 }
 .search-result-text :deep(mark) {
@@ -1494,40 +1693,41 @@ function formatTime(s) {
   border-radius: 3px;
 }
 .search-empty {
-  padding: 16px;
+  padding: 12px;
   text-align: center;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 /* ---------- 文档预览 ---------- */
 .preview-loading {
   display: flex;
   justify-content: center;
-  padding: 40px 0;
+  padding: 32px 0;
 }
 .preview-body {
-  max-height: 500px;
+  max-height: 450px;
   overflow-y: auto;
 }
 .preview-body pre {
   margin: 0;
-  padding: 14px;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 6px;
   background: var(--bg-code);
-  font-size: 12.5px;
+  font-size: 12px;
+}
 
 /* ---------- 知识图谱 ---------- */
 .graph-section {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .graph-section:last-child {
   margin-bottom: 0;
 }
 .graph-section-title {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--text-3);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -1537,15 +1737,15 @@ function formatTime(s) {
 .graph-edges {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 .graph-edge {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 6px;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 3px 6px;
+  border-radius: 5px;
   background: var(--bg-code);
 }
 .edge-node {
@@ -1557,7 +1757,7 @@ function formatTime(s) {
 }
 .edge-weight {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 10.5px;
 }
   line-height: 1.7;
   white-space: pre-wrap;
